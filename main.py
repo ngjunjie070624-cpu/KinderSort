@@ -20,6 +20,7 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
+from perf_monitor import PerformanceMonitor
 from sorter import PhotoSorter
 from utils import setup_logger
 
@@ -110,6 +111,21 @@ class KinderSortApp(ctk.CTk):
         self._current_image_var = tk.StringVar(value="—")
         self._remaining_var = tk.StringVar(value="—")
 
+        # --- Low Resource Optimization monitoring (new) ---------------------
+        # PerformanceMonitor only reads OS process counters; it has no
+        # dependency on, and never calls into, sorter.py / face_detector.py /
+        # face_recognizer.py. self._images_processed is fed from the same
+        # sort_all progress callback the UI already uses (_apply_progress) —
+        # no change to what sorter.py reports was needed.
+        self._perf_monitor = PerformanceMonitor()
+        self._perf_tick_id: str | None = None
+        self._images_processed: int = 0
+        self._perf_cpu_var = tk.StringVar(value="0%")
+        self._perf_mem_var = tk.StringVar(value="0 MB")
+        self._perf_processed_var = tk.StringVar(value="0 Images")
+        self._perf_elapsed_var = tk.StringVar(value="0.0 sec")
+        self._perf_avg_var = tk.StringVar(value="— sec/image")
+
         self._build_ui()
 
     # ------------------------------------------------------------------
@@ -136,6 +152,7 @@ class KinderSortApp(ctk.CTk):
         self._build_action_row(root)
         self._build_progress_card(root)
         self._build_status_panel(root)
+        self._build_performance_card(root)
         self._build_summary_card(root)
 
     # -- Title -----------------------------------------------------------
@@ -385,6 +402,43 @@ class KinderSortApp(ctk.CTk):
             font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
         ).pack(anchor="w", padx=12, pady=(0, 10))
 
+    # -- System Performance panel (Low Resource Optimization monitoring) --
+
+    def _build_performance_card(self, parent: ctk.CTkFrame) -> None:
+        """Small 'System Performance' panel: CPU%, RAM, processed count,
+        elapsed time, and average time/image, refreshed by _perf_tick()
+        while sorting. This card is purely a display for numbers produced
+        by PerformanceMonitor/psutil — it has no effect on sorting."""
+        card = ctk.CTkFrame(
+            parent, fg_color=self.CARD, corner_radius=self.CARD_CORNER,
+            border_width=1, border_color=self.CARD_BORDER,
+        )
+        card.grid(row=5, column=0, sticky="ew", pady=(0, 14))
+        card.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            card, text="System Performance",
+            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
+        ).grid(row=0, column=0, columnspan=2, sticky="w", padx=18, pady=(16, 10))
+
+        rows = [
+            ("CPU Usage", self._perf_cpu_var),
+            ("Memory", self._perf_mem_var),
+            ("Processed", self._perf_processed_var),
+            ("Elapsed Time", self._perf_elapsed_var),
+            ("Average", self._perf_avg_var),
+        ]
+        for i, (label, var) in enumerate(rows, start=1):
+            ctk.CTkLabel(
+                card, text=label, text_color=self.SUBTLE_TEXT,
+                font=ctk.CTkFont(family="Segoe UI", size=12), anchor="w",
+            ).grid(row=i, column=0, sticky="w", padx=(18, 6), pady=3)
+            ctk.CTkLabel(
+                card, textvariable=var,
+                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), anchor="e",
+            ).grid(row=i, column=1, sticky="e", padx=(6, 18), pady=3)
+        card.grid_rowconfigure(len(rows) + 1, minsize=6)
+
     # -- Run summary -------------------------------------------------------
 
     def _build_summary_card(self, parent: ctk.CTkFrame) -> None:
@@ -393,7 +447,7 @@ class KinderSortApp(ctk.CTk):
             parent, fg_color=self.CARD, corner_radius=self.CARD_CORNER,
             border_width=1, border_color=self.CARD_BORDER,
         )
-        card.grid(row=5, column=0, sticky="nsew")
+        card.grid(row=6, column=0, sticky="nsew")
         card.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(
             card, text="Run Summary", font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
@@ -461,6 +515,17 @@ class KinderSortApp(ctk.CTk):
         self._set_status("Loading reference photos…")
         self._start_ticker()
 
+        # --- Start performance monitoring alongside the existing timer ---
+        # Reset counters and (re)prime psutil's CPU sampler for this run.
+        self._images_processed = 0
+        self._perf_cpu_var.set("0%")
+        self._perf_mem_var.set("0 MB")
+        self._perf_processed_var.set("0 Images")
+        self._perf_elapsed_var.set("0.0 sec")
+        self._perf_avg_var.set("— sec/image")
+        self._perf_monitor.start()
+        self._start_perf_tick()
+
         logger = setup_logger(output_path)
         self._face_counter_handler = _FaceCountHandler(self)
         logger.addHandler(self._face_counter_handler)
@@ -514,6 +579,38 @@ class KinderSortApp(ctk.CTk):
             self._set_stat("Processing Time", f"{minutes:02d}:{seconds:02d}")
         self._sort_start_time = None
 
+    def _start_perf_tick(self) -> None:
+        """Begin the periodic 'System Performance' refresh."""
+        self._perf_tick()
+
+    def _perf_tick(self) -> None:
+        """Sample psutil once and update the panel; runs every 1000 ms.
+
+        Expected overhead: PerformanceMonitor.sample() is two syscall-level
+        reads (CPU delta since last call, current RSS) — sub-millisecond on
+        typical hardware. At a 1-second interval this is roughly 0.1% or
+        less of a single CPU core's time, negligible next to the face
+        detection/recognition work already running in the background
+        thread. A shorter interval (e.g. 250 ms, matching the existing time
+        ticker) was considered and rejected specifically to minimize this
+        overhead per requirement 6 — 1 sample/sec is plenty for a human-
+        readable live readout.
+        """
+        reading = self._perf_monitor.sample()
+        self._perf_cpu_var.set(f"{reading['cpu_percent']:.0f}%")
+        self._perf_mem_var.set(f"{reading['memory_mb']:.0f} MB")
+        self._perf_processed_var.set(f"{self._images_processed} Images")
+        self._perf_elapsed_var.set(f"{reading['elapsed_sec']:.1f} sec")
+        avg = (reading["elapsed_sec"] / self._images_processed) if self._images_processed else None
+        self._perf_avg_var.set(f"{avg:.2f} sec/image" if avg is not None else "— sec/image")
+        self._perf_tick_id = self.after(1000, self._perf_tick)
+
+    def _stop_perf_tick(self) -> None:
+        """Stop the periodic performance sampler."""
+        if self._perf_tick_id:
+            self.after_cancel(self._perf_tick_id)
+            self._perf_tick_id = None
+
     def _on_ref_progress(self, current: int, total: int, name: str) -> None:
         """Forward existing reference-load progress to the main GUI thread."""
         self.after(0, self._set_status, f"Loading references [{current}/{total}]: {name}…")
@@ -549,11 +646,16 @@ class KinderSortApp(ctk.CTk):
         remaining = max(total - current, 0)
         self._remaining_var.set(f"{remaining} remaining")
         self._set_status(f"[{current}/{total}] {filename}")
+        # Monitoring-only: 'current' already counts a fully processed image
+        # in the existing sort_all loop, so no change to sorter.py's
+        # callback signature or timing was needed to get this figure.
+        self._images_processed = current
 
     def _on_done(self, summary: dict[str, int]) -> None:
         """Show original completion totals in both status cards and summary text."""
         elapsed = int(time.monotonic() - self._sort_start_time) if self._sort_start_time else None
         self._stop_ticker(final_elapsed=elapsed)
+        self._stop_perf_tick()
         self._start_btn.configure(state="normal")
         self._cancel_btn.configure(state="disabled")
         self._progress_var.set(1.0)
@@ -568,6 +670,19 @@ class KinderSortApp(ctk.CTk):
         self._phase_var.set("Cancelled" if cancelled else "Complete")
         self._current_image_var.set(status)
         self._set_status(status)
+
+        # --- Final performance summary (requirement 4) -----------------
+        # One last sample brings the CPU-average/peak-memory figures up to
+        # the true end of the run rather than stopping at the last 1-second
+        # tick, which could be up to ~1s stale.
+        perf = self._perf_monitor.sample()
+        perf_final = self._perf_monitor.summary(self._images_processed)
+        self._perf_cpu_var.set(f"{perf['cpu_percent']:.0f}%")
+        self._perf_mem_var.set(f"{perf_final['peak_memory_mb']:.0f} MB")
+        self._perf_processed_var.set(f"{perf_final['images_processed']} Images")
+        self._perf_elapsed_var.set(f"{perf_final['total_time_sec']:.1f} sec")
+        self._perf_avg_var.set(f"{perf_final['avg_time_per_image_sec']:.2f} sec/image")
+
         self._write_summary("\n".join([
             status,
             "",
@@ -576,6 +691,13 @@ class KinderSortApp(ctk.CTk):
             f"Matched (sorted)   : {summary['matched']}",
             f"Unmatched          : {summary['unmatched']}",
             f"Skipped (errors)   : {summary['skipped']}",
+            "",
+            "--- Performance ---",
+            f"CPU Average        : {perf_final['avg_cpu_percent']:.0f}%",
+            f"Peak Memory        : {perf_final['peak_memory_mb']:.0f} MB",
+            f"Images             : {perf_final['images_processed']}",
+            f"Total Time         : {perf_final['total_time_sec']:.1f} sec",
+            f"Average Time/Image : {perf_final['avg_time_per_image_sec']:.2f} sec",
         ]))
         if summary["total"] == 0:
             messagebox.showwarning(
@@ -587,6 +709,7 @@ class KinderSortApp(ctk.CTk):
         """Restore controls after an existing worker error and show its message."""
         self._count_event_faces = False
         self._stop_ticker()
+        self._stop_perf_tick()
         self._start_btn.configure(state="normal")
         self._cancel_btn.configure(state="disabled")
         self._phase_var.set("Error")
