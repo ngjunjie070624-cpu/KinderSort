@@ -35,10 +35,31 @@ class PhotoSorter:
     """
 
     DISTANCE_THRESHOLD = 0.55
-    """Maximum ArcFace cosine distance to accept a student match."""
+    """Maximum ArcFace cosine distance to accept a student match.
+
+    NOT changed in this pass. buffalo_l cosine distances for a genuine match
+    typically fall well under 0.4 in good lighting; 0.55 already has real
+    slack built in. Loosening this further to chase down "false Unmatched"
+    reports risks the opposite failure (wrong student matched) and doesn't
+    address the actual cause we found: bad reference embeddings from picking
+    the wrong face in a multi-person reference photo (see load_references),
+    and faces silently dropped during embedding extraction (see
+    face_recognizer.extract_embeddings_for_boxes). Fix the input quality
+    first; only loosen this threshold afterwards if false-unmatched reports
+    persist with clean references.
+    """
 
     AMBIGUITY_MARGIN = 0.02
-    """Minimum gap between the best and second-best student distances."""
+    """Minimum gap between the best and second-best student distances.
+
+    NOT changed in this pass — with only one reference photo per student
+    (the common case here), distances are noisier than with several
+    references averaged/best-cased together, and a larger margin would
+    reject more real matches as "too close to call". This is a case for
+    encouraging multiple reference photos per student (already supported by
+    dropping several images into a `StudentName/` subfolder) rather than
+    tuning the margin down.
+    """
 
     MAX_IMAGE_DIMENSION = 1000
     """Longest side in pixels after resizing for face detection (performance)."""
@@ -124,13 +145,39 @@ class PhotoSorter:
                     continue
 
                 if len(boxes) > 1:
+                    # ROOT CAUSE (students wrongly "Unmatched"): boxes[0] is
+                    # whatever order the detector happens to emit — not
+                    # necessarily the student. If a sibling, teacher, or
+                    # photobomber appears in the reference photo and lands
+                    # at index 0, the student's stored embedding is actually
+                    # the *wrong person's* face, and every real photo of the
+                    # student then fails to match. In a reference photo the
+                    # intended subject is almost always the largest face
+                    # (closest to camera / most prominent), so we select by
+                    # box area instead of detector order. This is a
+                    # heuristic, not a guarantee — the "Multiple faces"
+                    # warning still fires so a teacher can crop a cleaner
+                    # reference photo if needed.
+                    box_areas = [
+                        (b, (b[2] - b[0]) * (b[3] - b[1])) for b in boxes
+                    ]
+                    box_areas.sort(key=lambda item: item[1], reverse=True)
+                    chosen_box = box_areas[0][0]
                     self.logger.warning(
-                        "Multiple faces in reference photo for %s — using first face only",
+                        "Multiple faces (%d) in reference photo for %s — "
+                        "using largest face (area=%dpx² of %s) as the "
+                        "student; other boxes: %s",
+                        len(boxes),
                         student_name,
+                        box_areas[0][1],
+                        chosen_box,
+                        [f"{b}:{a}px²" for b, a in box_areas[1:]],
                     )
+                else:
+                    chosen_box = boxes[0]
 
                 encodings = self.recognizer.extract_embeddings_for_boxes(
-                    bgr_image, [boxes[0]]
+                    bgr_image, [chosen_box]
                 )
 
                 if not encodings:

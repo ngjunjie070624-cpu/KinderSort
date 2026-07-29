@@ -17,8 +17,21 @@ logger = logging.getLogger("kindersort")
 class InsightFaceRecognizer:
     """InsightFace-based face recognizer returning 512-dimensional feature vectors."""
 
-    CROP_MARGIN = 0.25
-    """Extra context around a detector box so InsightFace can re-detect the face."""
+    CROP_MARGIN = 0.35
+    """Extra context around a detector box so InsightFace can re-detect the face.
+
+    ROOT CAUSE (faces that SCRFD detects but never turn into an embedding —
+    reported by users as "faces not detected" when they actually were
+    detected and then silently dropped here): InsightFace's embedding step
+    re-runs its own face detector on the crop. A tight 0.25 margin sometimes
+    excludes enough of the face's periphery (chin, forehead, ear) that this
+    *second* detection pass fails, especially for faces that were already
+    small or at an angle. This previously produced no error and no log at
+    default log level, so it looked identical to the box never having been
+    found. 0.35 gives the second pass more surrounding context to work with,
+    at a small, fixed per-face cost (slightly larger crop to run inference
+    on) rather than any change to how many photos are processed.
+    """
 
     def __init__(
         self,
@@ -147,6 +160,26 @@ class InsightFaceRecognizer:
             emb = self.extract_embedding(face_crop)
             if emb is not None:
                 embeddings.append(emb)
+            else:
+                # Previously silent at this call site (extract_embedding only
+                # logged at DEBUG). Surfacing it at WARNING here — with the
+                # original detector box — makes "detector found N faces but
+                # only M became embeddings" visible in the normal log output,
+                # which is exactly the discrepancy behind reports of faces
+                # that appear "not detected" when they actually were.
+                logger.warning(
+                    "Face box (%d, %d, %d, %d) was detected but produced no "
+                    "embedding (re-detection on the crop failed) — this face "
+                    "will not be matched/encoded",
+                    x1, y1, x2, y2,
+                )
+
+        if len(embeddings) < len(bounding_boxes):
+            logger.info(
+                "extract_embeddings_for_boxes: %d box(es) in, %d embedding(s) out",
+                len(bounding_boxes),
+                len(embeddings),
+            )
 
         return embeddings
 

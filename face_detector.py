@@ -32,8 +32,28 @@ class YOLOFaceDetector:
         """
         self.model_path = str(model_path)
         self.conf_threshold = conf_threshold
-        self.det_size = (704, 704)
-        self.nms_threshold = 0.45
+        # ROOT CAUSE (recall in group/reference photos with 3+ people):
+        # 704px was already an upgrade from SCRFD's stock 640px, but group
+        # shots still lose the smallest/farthest faces because their pixel
+        # footprint at 704px input is well under SCRFD's reliable minimum
+        # (~20-30px). Bumping to 800px buys ~13% more linear resolution per
+        # face (~29% more pixels overall) at a roughly proportional CPU cost
+        # increase for the detection pass only (recognition cost is
+        # unaffected since it operates on individually-cropped faces).
+        self.det_size = (800, 800)
+        # ROOT CAUSE (missed faces in tightly-grouped photos, e.g. 3 people
+        # standing shoulder-to-shoulder): SCRFD's NMS treats any pair of
+        # boxes with IoU >= nms_threshold as duplicates of the same face and
+        # discards the lower-confidence one. At 0.45, two *different* faces
+        # whose boxes happen to overlap moderately (common when people are
+        # close together or partially behind one another) can be wrongly
+        # collapsed into one. Raising the threshold to 0.6 requires boxes to
+        # overlap much more before one is suppressed, so genuinely distinct
+        # nearby faces are both kept. This does not meaningfully increase
+        # false positives because two *unrelated* face detections rarely
+        # overlap at all (IoU near 0), so the extra headroom only matters
+        # for the close-together case we're trying to fix.
+        self.nms_threshold = 0.6
         self._yolo_model: YOLO | None = None
         self._insight_app: FaceAnalysis | None = None
         self._use_insight_fallback = False
@@ -153,12 +173,21 @@ class YOLOFaceDetector:
                 for face in faces:
                     detected_box = self._valid_box(face.bbox, img_arr.shape[:2])
                     if detected_box is not None:
+                        x1, y1, x2, y2 = detected_box
+                        area = (x2 - x1) * (y2 - y1)
                         boxes.append(detected_box)
+                        # area is logged alongside confidence so a small/low-
+                        # confidence face that gets discarded downstream
+                        # (e.g. during embedding extraction) can be told
+                        # apart from one the detector never saw at all.
                         logger.info(
-                            "SCRFD face: confidence=%.3f box=%s",
+                            "SCRFD face: confidence=%.3f box=%s area=%dpx²",
                             float(face.det_score),
                             detected_box,
+                            area,
                         )
+                # NOTE: this exact log line is parsed by main.py's
+                # _FaceCountHandler regex — keep the wording unchanged.
                 logger.info("SCRFD detected %d face(s)", len(boxes))
             else:
                 logger.warning("Face detection received an empty or unreadable image")
