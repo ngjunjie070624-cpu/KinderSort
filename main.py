@@ -1,7 +1,13 @@
 """CustomTkinter GUI entry point for KinderSort.
 
-The interface is intentionally separate from the PhotoSorter pipeline: it
-keeps the existing worker-thread, callbacks, and sorting behaviour unchanged.
+UI-ONLY REDESIGN NOTE: every method that talks to PhotoSorter (_on_start,
+_run_sorting, _on_ref_progress, _on_progress, _on_done, _on_error, the
+worker thread, the cancel flag) keeps its original name, signature, and
+call sequence. Only widget construction and a handful of *additional*
+StringVars (for the new "current image" / "remaining files" / "phase"
+display, which the old UI didn't surface) were added. sorter.py,
+face_detector.py, and face_recognizer.py are not imported differently and
+were not modified for this change.
 """
 
 import logging
@@ -37,14 +43,31 @@ class _FaceCountHandler(logging.Handler):
 
 
 class KinderSortApp(ctk.CTk):
-    """Modern, low-overhead CustomTkinter shell around the existing sorter."""
+    """Windows 11-styled CustomTkinter shell around the unchanged sorter pipeline."""
 
-    MIN_WIDTH = 780
-    MIN_HEIGHT = 650
-    ACCENT = "#4F8EF7"
-    SUCCESS = "#2FBF71"
-    SURFACE = ("#F6F8FB", "#1B1F2A")
-    CARD = ("#FFFFFF", "#252B38")
+    MIN_WIDTH = 860
+    MIN_HEIGHT = 760
+
+    # --- Windows 11-inspired palette -----------------------------------
+    # (light, dark) tuples, following CustomTkinter's mode-pair convention.
+    # ACCENT approximates Windows 11's default system accent blue.
+    ACCENT = ("#0067C0", "#60CDFF")
+    ACCENT_HOVER = ("#005AA8", "#4CC2FF")
+    SUCCESS = ("#0F7B3D", "#3FDB7A")
+    SUCCESS_HOVER = ("#0C6631", "#2FBF71")
+    DANGER_TEXT = ("#8A1F11", "#FF99A4")
+    SURFACE = ("#F3F3F3", "#202020")          # Win11 "Mica"-like app background
+    CARD = ("#FFFFFF", "#2B2B2B")             # Win11 card/acrylic surface
+    CARD_BORDER = ("#E5E5E5", "#3A3A3A")
+    SUBTLE_TEXT = ("#5F5F5F", "#B0B0B0")
+    STAT_BG = ("#F5F8FC", "#242A33")
+
+    # Consistent control sizing (requirement 5: rounded buttons, consistent sizing)
+    BTN_HEIGHT = 38
+    BTN_CORNER = 10
+    CARD_CORNER = 14
+    BROWSE_BTN_WIDTH = 96
+    ACTION_BTN_WIDTH = 150
 
     def __init__(self) -> None:
         """Configure the themed window and preserve the original application state."""
@@ -52,26 +75,23 @@ class KinderSortApp(ctk.CTk):
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
 
-        self.title("KinderSort v1.1 — Student Photo Organiser")
+        self.title("KinderSort AI — Face Recognition & Photo Sorting System")
         self.minsize(self.MIN_WIDTH, self.MIN_HEIGHT)
-        self.geometry("900x720")
+        self.geometry("980x820")
 
-        # These variables and the cancellation event are unchanged application state.
+        # --- Original application state (unchanged) ---------------------
         self._reference_var = tk.StringVar()
         self._events_var = tk.StringVar()
         self._output_var = tk.StringVar()
         self._cancel_flag = threading.Event()
 
-        # Lightweight timer state; UI refreshes every 250 ms while sorting only.
         self._sort_start_time: float | None = None
         self._ticker_id: str | None = None
 
-        # GUI telemetry derives the face total from existing detector logs.
         self._count_event_faces = False
         self._event_face_count = 0
         self._face_counter_handler: _FaceCountHandler | None = None
 
-        self._appearance_var = tk.StringVar(value="Dark")
         self._progress_var = tk.DoubleVar(value=0.0)
         self._status_var = tk.StringVar(value="Ready to sort classroom photos.")
         self._progress_text_var = tk.StringVar(value="0%")
@@ -82,189 +102,316 @@ class KinderSortApp(ctk.CTk):
             "Processing Time": tk.StringVar(value="00:00"),
         }
 
+        # --- New display-only state (requirement 6/7: richer status panel
+        # and progress bar). These do not feed back into sorting logic —
+        # they're populated from the same callbacks the old UI already used.
+        self._appearance_var = tk.StringVar(value="Dark")
+        self._phase_var = tk.StringVar(value="Idle")
+        self._current_image_var = tk.StringVar(value="—")
+        self._remaining_var = tk.StringVar(value="—")
+
         self._build_ui()
 
     # ------------------------------------------------------------------
-    # Modern CustomTkinter layout (presentation only; no sorting logic here)
+    # Windows 11-style layout (presentation only; no sorting logic here)
     # ------------------------------------------------------------------
 
     def _build_ui(self) -> None:
-        """Build the responsive dark-mode layout with rounded controls and cards."""
+        """Build the responsive Win11-styled layout: title, 3 folder sections,
+        actions, progress card, status panel, and run summary."""
         self.configure(fg_color=self.SURFACE)
-        root = ctk.CTkFrame(self, fg_color="transparent")
-        root.pack(fill="both", expand=True, padx=28, pady=24)
+
+        # A scrollable outer frame keeps the window usable if the user
+        # shrinks it below the natural content height (requirement 11).
+        outer = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        outer.pack(fill="both", expand=True, padx=0, pady=0)
+        outer.grid_columnconfigure(0, weight=1)
+
+        root = ctk.CTkFrame(outer, fg_color="transparent")
+        root.pack(fill="both", expand=True, padx=32, pady=28)
         root.grid_columnconfigure(0, weight=1)
-        root.grid_rowconfigure(4, weight=1)
 
         self._build_header(root)
-        self._build_folder_card(root)
+        self._build_folder_sections(root)
         self._build_action_row(root)
         self._build_progress_card(root)
+        self._build_status_panel(root)
         self._build_summary_card(root)
 
+    # -- Title -----------------------------------------------------------
+
     def _build_header(self, parent: ctk.CTkFrame) -> None:
-        """Create the title area and user-selectable light/dark/system mode."""
+        """Project title block (requirement 9) plus a Win11-style Light/Dark
+        segmented toggle (requirement 10)."""
         header = ctk.CTkFrame(parent, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", pady=(0, 18))
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 22))
         header.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(
-            header,
-            text="KinderSort",
-            font=ctk.CTkFont(size=28, weight="bold"),
-        ).grid(row=0, column=0, sticky="w")
-        ctk.CTkLabel(
-            header,
-            text="Student photo organiser",
-            text_color=("#5D6472", "#A9B0BE"),
-            font=ctk.CTkFont(size=14),
-        ).grid(row=1, column=0, sticky="w", pady=(2, 0))
+        title_block = ctk.CTkFrame(header, fg_color="transparent")
+        title_block.grid(row=0, column=0, sticky="w")
 
-        ctk.CTkOptionMenu(
-            header,
-            values=["Dark", "Light", "System"],
+        ctk.CTkLabel(
+            title_block,
+            text="KinderSort AI",
+            font=ctk.CTkFont(family="Segoe UI", size=30, weight="bold"),
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            title_block,
+            text="Face Recognition & Photo Sorting System",
+            text_color=self.SUBTLE_TEXT,
+            font=ctk.CTkFont(family="Segoe UI", size=14),
+        ).pack(anchor="w", pady=(2, 0))
+
+        toggle_block = ctk.CTkFrame(header, fg_color="transparent")
+        toggle_block.grid(row=0, column=1, sticky="e")
+        ctk.CTkLabel(
+            toggle_block, text="Appearance", text_color=self.SUBTLE_TEXT,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+        ).pack(anchor="e", pady=(0, 4))
+        ctk.CTkSegmentedButton(
+            toggle_block,
+            values=["Light", "Dark"],
             variable=self._appearance_var,
             command=self._change_appearance,
-            width=112,
-            corner_radius=10,
-        ).grid(row=0, column=1, rowspan=2, sticky="e")
+            corner_radius=self.BTN_CORNER,
+            selected_color=self.ACCENT,
+            selected_hover_color=self.ACCENT_HOVER,
+            width=160,
+        ).pack(anchor="e")
 
-    def _build_folder_card(self, parent: ctk.CTkFrame) -> None:
-        """Build the rounded folder-selection card using the original path variables."""
-        card = ctk.CTkFrame(parent, fg_color=self.CARD, corner_radius=16)
-        card.grid(row=1, column=0, sticky="ew", pady=(0, 14))
-        card.grid_columnconfigure(1, weight=1)
+    # -- Folder sections (requirement 4) ---------------------------------
 
-        ctk.CTkLabel(
-            card, text="Folders", font=ctk.CTkFont(size=16, weight="bold")
-        ).grid(row=0, column=0, columnspan=3, sticky="w", padx=18, pady=(16, 10))
+    def _build_folder_sections(self, parent: ctk.CTkFrame) -> None:
+        """Three distinct grouped cards, one per folder, instead of one
+        combined list — makes the three-step setup visually explicit."""
+        wrap = ctk.CTkFrame(parent, fg_color="transparent")
+        wrap.grid(row=1, column=0, sticky="ew", pady=(0, 18))
+        wrap.grid_columnconfigure(0, weight=1)
 
-        self._build_folder_row(card, "Reference photos", self._reference_var, 1)
-        self._build_folder_row(card, "Events folder", self._events_var, 2)
-        self._build_folder_row(card, "Output folder", self._output_var, 3)
+        self._build_folder_section(
+            wrap, row=0,
+            icon="📁", title="Reference Folder",
+            description="One clear photo per student, named by student name.",
+            string_var=self._reference_var,
+        )
+        self._build_folder_section(
+            wrap, row=1,
+            icon="🏫", title="Classroom Folder",
+            description="Event photo subfolders to be sorted (e.g. Sports_Day, Concert).",
+            string_var=self._events_var,
+        )
+        self._build_folder_section(
+            wrap, row=2,
+            icon="📤", title="Output Folder",
+            description="Where sorted student folders and the log file will be written.",
+            string_var=self._output_var,
+        )
 
-    def _build_folder_row(
+    def _build_folder_section(
         self,
         parent: ctk.CTkFrame,
-        label_text: str,
-        string_var: tk.StringVar,
         row: int,
+        icon: str,
+        title: str,
+        description: str,
+        string_var: tk.StringVar,
     ) -> None:
-        """Create one spacious label, path entry, and rounded browse button row."""
-        ctk.CTkLabel(parent, text=label_text, width=120, anchor="w").grid(
-            row=row, column=0, sticky="w", padx=(18, 10), pady=7
+        """One self-contained Win11-style card: icon + title + description
+        on top, path entry + rounded Browse button below."""
+        card = ctk.CTkFrame(
+            parent, fg_color=self.CARD, corner_radius=self.CARD_CORNER,
+            border_width=1, border_color=self.CARD_BORDER,
         )
+        card.grid(row=row, column=0, sticky="ew", pady=(0, 10))
+        card.grid_columnconfigure(0, weight=1)
+
+        heading = ctk.CTkFrame(card, fg_color="transparent")
+        heading.grid(row=0, column=0, sticky="ew", padx=18, pady=(14, 2))
+        ctk.CTkLabel(
+            heading, text=f"{icon}  {title}",
+            font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            heading, text=description, text_color=self.SUBTLE_TEXT,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+        ).pack(anchor="w", pady=(1, 0))
+
+        row_frame = ctk.CTkFrame(card, fg_color="transparent")
+        row_frame.grid(row=1, column=0, sticky="ew", padx=18, pady=(8, 16))
+        row_frame.grid_columnconfigure(0, weight=1)
+
         ctk.CTkEntry(
-            parent,
+            row_frame,
             textvariable=string_var,
             placeholder_text="Choose a folder…",
-            height=36,
-            corner_radius=9,
-        ).grid(row=row, column=1, sticky="ew", pady=7)
+            height=self.BTN_HEIGHT,
+            corner_radius=self.BTN_CORNER,
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 10))
         ctk.CTkButton(
-            parent,
+            row_frame,
             text="Browse",
-            width=82,
-            height=36,
-            corner_radius=9,
+            width=self.BROWSE_BTN_WIDTH,
+            height=self.BTN_HEIGHT,
+            corner_radius=self.BTN_CORNER,
             command=lambda value=string_var: self._browse_folder(value),
-        ).grid(row=row, column=2, padx=(10, 18), pady=7)
+        ).grid(row=0, column=1)
+
+    # -- Actions (requirement 5: consistent rounded buttons) -------------
 
     def _build_action_row(self, parent: ctk.CTkFrame) -> None:
-        """Build rounded start/cancel actions without changing their handlers."""
+        """Start/Cancel actions, same handlers as before, restyled for
+        consistent sizing and Win11 accent colors."""
         actions = ctk.CTkFrame(parent, fg_color="transparent")
-        actions.grid(row=2, column=0, sticky="ew", pady=(0, 14))
-        actions.grid_columnconfigure(2, weight=1)
+        actions.grid(row=2, column=0, sticky="ew", pady=(4, 18))
 
         self._start_btn = ctk.CTkButton(
             actions,
-            text="Start sorting",
-            height=42,
-            corner_radius=12,
+            text="▶  Start Sorting",
+            width=self.ACTION_BTN_WIDTH,
+            height=self.BTN_HEIGHT + 6,
+            corner_radius=self.BTN_CORNER,
             fg_color=self.SUCCESS,
-            hover_color="#24985A",
-            font=ctk.CTkFont(weight="bold"),
+            hover_color=self.SUCCESS_HOVER,
+            font=ctk.CTkFont(family="Segoe UI", weight="bold"),
             command=self._on_start,
         )
-        self._start_btn.grid(row=0, column=0, sticky="w")
+        self._start_btn.pack(side="left")
+
         self._cancel_btn = ctk.CTkButton(
             actions,
             text="Cancel",
-            height=42,
-            width=100,
-            corner_radius=12,
+            width=110,
+            height=self.BTN_HEIGHT + 6,
+            corner_radius=self.BTN_CORNER,
             fg_color=("#D9DEE8", "#3A4252"),
             text_color=("#252B35", "#F4F6FA"),
             hover_color=("#C8CFDC", "#4B5568"),
             state="disabled",
             command=self._on_cancel,
         )
-        self._cancel_btn.grid(row=0, column=1, sticky="w", padx=(10, 0))
+        self._cancel_btn.pack(side="left", padx=(10, 0))
+
+    # -- Progress card (requirement 7) ------------------------------------
 
     def _build_progress_card(self, parent: ctk.CTkFrame) -> None:
-        """Build progress, current status, and requested sorting-status panel."""
-        card = ctk.CTkFrame(parent, fg_color=self.CARD, corner_radius=16)
+        """Progress bar with percentage, current file name, and remaining
+        file count all visible at once."""
+        card = ctk.CTkFrame(
+            parent, fg_color=self.CARD, corner_radius=self.CARD_CORNER,
+            border_width=1, border_color=self.CARD_BORDER,
+        )
         card.grid(row=3, column=0, sticky="ew", pady=(0, 14))
         card.grid_columnconfigure(0, weight=1)
 
         top = ctk.CTkFrame(card, fg_color="transparent")
         top.grid(row=0, column=0, sticky="ew", padx=18, pady=(16, 8))
         top.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(top, text="Progress", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=0, column=0, sticky="w"
-        )
-        ctk.CTkLabel(top, textvariable=self._progress_text_var).grid(row=0, column=1, sticky="e")
+        ctk.CTkLabel(
+            top, text="Progress", font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
+        ).grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(
+            top, textvariable=self._progress_text_var,
+            font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
+            text_color=self.ACCENT,
+        ).grid(row=0, column=1, sticky="e")
 
-        self._progress_bar = ctk.CTkProgressBar(card, variable=self._progress_var, height=12, corner_radius=8)
+        self._progress_bar = ctk.CTkProgressBar(
+            card, variable=self._progress_var, height=10, corner_radius=8,
+            progress_color=self.ACCENT,
+        )
         self._progress_bar.grid(row=1, column=0, sticky="ew", padx=18)
         self._progress_bar.set(0)
+
+        detail = ctk.CTkFrame(card, fg_color="transparent")
+        detail.grid(row=2, column=0, sticky="ew", padx=18, pady=(8, 4))
+        detail.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(
-            card,
-            textvariable=self._status_var,
-            anchor="w",
-            justify="left",
-            text_color=("#5D6472", "#A9B0BE"),
-        ).grid(row=2, column=0, sticky="ew", padx=18, pady=(8, 14))
+            detail, textvariable=self._current_image_var,
+            anchor="w", font=ctk.CTkFont(family="Segoe UI", size=12),
+        ).grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(
+            detail, textvariable=self._remaining_var,
+            anchor="e", text_color=self.SUBTLE_TEXT,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+        ).grid(row=0, column=1, sticky="e")
+
+        ctk.CTkLabel(
+            card, textvariable=self._status_var,
+            anchor="w", justify="left",
+            text_color=self.SUBTLE_TEXT,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+        ).grid(row=3, column=0, sticky="ew", padx=18, pady=(2, 16))
+
+    # -- Status panel (requirement 6) ------------------------------------
+
+    def _build_status_panel(self, parent: ctk.CTkFrame) -> None:
+        """Dedicated status panel: current processing phase as a headline
+        pill, plus the four running-total stat cards."""
+        card = ctk.CTkFrame(
+            parent, fg_color=self.CARD, corner_radius=self.CARD_CORNER,
+            border_width=1, border_color=self.CARD_BORDER,
+        )
+        card.grid(row=4, column=0, sticky="ew", pady=(0, 14))
+        card.grid_columnconfigure(0, weight=1)
+
+        head = ctk.CTkFrame(card, fg_color="transparent")
+        head.grid(row=0, column=0, sticky="ew", padx=18, pady=(16, 10))
+        head.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(
+            head, text="Status", font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
+        ).grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(
+            head, textvariable=self._phase_var,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            text_color=self.ACCENT, anchor="e",
+        ).grid(row=0, column=1, sticky="e")
 
         stats = ctk.CTkFrame(card, fg_color="transparent")
-        stats.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 14))
+        stats.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 16))
         for column, title in enumerate(self._stat_vars):
             stats.grid_columnconfigure(column, weight=1, uniform="status")
             self._build_stat_card(stats, title, column)
 
     def _build_stat_card(self, parent: ctk.CTkFrame, title: str, column: int) -> None:
-        """Create one compact status card; values update from existing callbacks/logs."""
-        card = ctk.CTkFrame(parent, fg_color=("#EDF2FA", "#1E2430"), corner_radius=12)
+        """One compact stat card; values update from the existing callbacks/logs."""
+        card = ctk.CTkFrame(parent, fg_color=self.STAT_BG, corner_radius=12)
         card.grid(row=0, column=column, sticky="ew", padx=6)
         ctk.CTkLabel(
-            card, text=title, text_color=("#687184", "#9DA6B8"), font=ctk.CTkFont(size=11)
-        ).pack(anchor="w", padx=12, pady=(9, 0))
+            card, text=title, text_color=self.SUBTLE_TEXT,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+        ).pack(anchor="w", padx=12, pady=(10, 0))
         ctk.CTkLabel(
-            card, textvariable=self._stat_vars[title], font=ctk.CTkFont(size=20, weight="bold")
-        ).pack(anchor="w", padx=12, pady=(0, 9))
+            card, textvariable=self._stat_vars[title],
+            font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
+        ).pack(anchor="w", padx=12, pady=(0, 10))
+
+    # -- Run summary -------------------------------------------------------
 
     def _build_summary_card(self, parent: ctk.CTkFrame) -> None:
-        """Build the existing read-only completion summary in a styled container."""
-        card = ctk.CTkFrame(parent, fg_color=self.CARD, corner_radius=16)
-        card.grid(row=4, column=0, sticky="nsew")
-        card.grid_columnconfigure(0, weight=1)
-        card.grid_rowconfigure(1, weight=1)
-        ctk.CTkLabel(card, text="Run summary", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=0, column=0, sticky="w", padx=18, pady=(16, 8)
+        """Read-only completion summary in a styled container (unchanged content)."""
+        card = ctk.CTkFrame(
+            parent, fg_color=self.CARD, corner_radius=self.CARD_CORNER,
+            border_width=1, border_color=self.CARD_BORDER,
         )
+        card.grid(row=5, column=0, sticky="nsew")
+        card.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            card, text="Run Summary", font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
+        ).grid(row=0, column=0, sticky="w", padx=18, pady=(16, 8))
         self._summary_text = ctk.CTkTextbox(
             card,
-            height=130,
+            height=140,
             corner_radius=10,
             border_width=0,
-            fg_color=("#EEF2F8", "#171B24"),
-            font=ctk.CTkFont(size=13),
+            fg_color=self.STAT_BG,
+            font=ctk.CTkFont(family="Segoe UI", size=13),
         )
         self._summary_text.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 18))
         self._summary_text.configure(state="disabled")
 
     # ------------------------------------------------------------------
-    # Existing event flow; only widget calls are CustomTkinter equivalents
+    # Existing event flow — unchanged control logic; only extra display
+    # variables are set alongside the original ones.
     # ------------------------------------------------------------------
 
     def _change_appearance(self, value: str) -> None:
@@ -287,7 +434,7 @@ class KinderSortApp(ctk.CTk):
             return
 
         ref_path, events_path, output_path = Path(ref), Path(events), Path(output)
-        for path, name in [(ref_path, "Reference"), (events_path, "Events")]:
+        for path, name in [(ref_path, "Reference"), (events_path, "Classroom")]:
             if not path.is_dir():
                 messagebox.showerror("Invalid folder", f"{name} folder does not exist:\n{path}")
                 return
@@ -305,6 +452,9 @@ class KinderSortApp(ctk.CTk):
         self._progress_var.set(0.0)
         self._progress_bar.set(0.0)
         self._progress_text_var.set("0%")
+        self._current_image_var.set("—")
+        self._remaining_var.set("—")
+        self._phase_var.set("Loading references")
         for title, value in (("Faces Detected", "0"), ("Matched", "0"), ("Unmatched", "0"), ("Processing Time", "00:00")):
             self._set_stat(title, value)
         self._clear_summary()
@@ -330,8 +480,8 @@ class KinderSortApp(ctk.CTk):
             self.after(0, self._on_error, "No student faces could be loaded. Please check your Reference folder.")
             return
 
-        # This flag only scopes GUI log telemetry to event photos, not references.
         self._count_event_faces = True
+        self.after(0, self._phase_var.set, "Sorting photos")
         try:
             summary = sorter.sort_all(progress_callback=self._on_progress, cancelled=self._cancel_flag.is_set)
             self._count_event_faces = False
@@ -367,6 +517,7 @@ class KinderSortApp(ctk.CTk):
     def _on_ref_progress(self, current: int, total: int, name: str) -> None:
         """Forward existing reference-load progress to the main GUI thread."""
         self.after(0, self._set_status, f"Loading references [{current}/{total}]: {name}…")
+        self.after(0, self._current_image_var.set, f"Reference: {name}")
 
     def _show_ref_warning(self, skipped_names: list[str]) -> None:
         """Preserve the original warning when reference images contain no usable face."""
@@ -380,6 +531,7 @@ class KinderSortApp(ctk.CTk):
         """Preserve cancellation behaviour; the worker stops after its current image."""
         self._cancel_flag.set()
         self._cancel_btn.configure(state="disabled")
+        self._phase_var.set("Cancelling")
         self._set_status("Cancelling… (finishing current image)")
 
     def _on_progress(self, current: int, total: int, filename: str) -> None:
@@ -387,11 +539,15 @@ class KinderSortApp(ctk.CTk):
         self.after(0, self._apply_progress, current, total, filename)
 
     def _apply_progress(self, current: int, total: int, filename: str) -> None:
-        """Update only lightweight GUI state for the current event image."""
+        """Update GUI state for the current event image, including the new
+        current-image and remaining-file displays."""
         fraction = (current / total) if total else 0.0
         self._progress_var.set(fraction)
         self._progress_bar.set(fraction)
         self._progress_text_var.set(f"{fraction * 100:.0f}%")
+        self._current_image_var.set(f"Current: {filename}")
+        remaining = max(total - current, 0)
+        self._remaining_var.set(f"{remaining} remaining")
         self._set_status(f"[{current}/{total}] {filename}")
 
     def _on_done(self, summary: dict[str, int]) -> None:
@@ -403,11 +559,14 @@ class KinderSortApp(ctk.CTk):
         self._progress_var.set(1.0)
         self._progress_bar.set(1.0)
         self._progress_text_var.set("100%")
+        self._remaining_var.set("0 remaining")
         self._set_stat("Matched", str(summary["matched"]))
         self._set_stat("Unmatched", str(summary["unmatched"]))
 
         cancelled = self._cancel_flag.is_set()
         status = "Sorting cancelled." if cancelled else "Sorting complete."
+        self._phase_var.set("Cancelled" if cancelled else "Complete")
+        self._current_image_var.set(status)
         self._set_status(status)
         self._write_summary("\n".join([
             status,
@@ -421,7 +580,7 @@ class KinderSortApp(ctk.CTk):
         if summary["total"] == 0:
             messagebox.showwarning(
                 "No images found",
-                "No photos were found in the Events folder.\n\nSupported formats: .jpg  .jpeg  .png  .bmp  .webp",
+                "No photos were found in the Classroom folder.\n\nSupported formats: .jpg  .jpeg  .png  .bmp  .webp",
             )
 
     def _on_error(self, message: str) -> None:
@@ -430,6 +589,7 @@ class KinderSortApp(ctk.CTk):
         self._stop_ticker()
         self._start_btn.configure(state="normal")
         self._cancel_btn.configure(state="disabled")
+        self._phase_var.set("Error")
         self._set_status("An error occurred.")
         messagebox.showerror("Unexpected error", message)
 
