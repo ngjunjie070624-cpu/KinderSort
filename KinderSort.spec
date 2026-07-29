@@ -3,7 +3,7 @@ from PyInstaller.utils.hooks import collect_all
 
 datas, binaries, hiddenimports = [], [], []
 
-for pkg in ('face_recognition', 'face_recognition_models', 'dlib'):
+for pkg in ('customtkinter',):
     d, b, h = collect_all(pkg)
     datas += d
     binaries += b

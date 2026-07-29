@@ -2,17 +2,20 @@
 sorter.py — Face recognition logic for KinderSort.
 
 PhotoSorter loads reference encodings and sorts event photos into per-student
-output folders.  All processing is CPU-only (no GPU required).
+output folders using YOLOv8n face detection and InsightFace face recognition.
+All processing is CPU-only (no GPU required).
 """
 
 import logging
 from collections.abc import Callable
 from pathlib import Path
 
-import face_recognition
+import cv2
 import numpy as np
 from PIL import Image, UnidentifiedImageError
 
+from face_detector import YOLOFaceDetector
+from face_recognizer import InsightFaceRecognizer
 from utils import (
     build_output_filename,
     collect_event_images,
@@ -32,7 +35,10 @@ class PhotoSorter:
     """
 
     DISTANCE_THRESHOLD = 0.55
-    """Maximum face distance to consider a match (lower = stricter)."""
+    """Maximum ArcFace cosine distance to accept a student match."""
+
+    AMBIGUITY_MARGIN = 0.02
+    """Minimum gap between the best and second-best student distances."""
 
     MAX_IMAGE_DIMENSION = 1000
     """Longest side in pixels after resizing for face detection (performance)."""
@@ -44,12 +50,17 @@ class PhotoSorter:
         output_folder: Path,
         logger: logging.Logger,
     ) -> None:
-        """Store folder paths and logger; initialise empty encoding dict."""
+        """Store folder paths and logger; initialise detector, recognizer, and empty encoding dict."""
         self.reference_folder = reference_folder
         self.events_folder = events_folder
         self.output_folder = output_folder
         self.logger = logger
-        self._student_encodings: dict[str, np.ndarray] = {}
+        # Each student can have several reference images while root-level
+        # ``Student Name.jpg`` files continue to work exactly as before.
+        self._student_encodings: dict[str, list[np.ndarray]] = {}
+
+        self.detector = YOLOFaceDetector()
+        self.recognizer = InsightFaceRecognizer()
 
     # ------------------------------------------------------------------
     # Reference loading
@@ -61,8 +72,9 @@ class PhotoSorter:
     ) -> list[str]:
         """Encode every reference photo and store by student name.
 
-        Iterates over image files in reference_folder.  The student name is the
-        filename stem (e.g. ``Ali.jpg`` → ``"Ali"``).
+        Root-level images use their filename as the student name (for example,
+        ``Ali.jpg``). Images inside ``Ali/`` are all treated as references for
+        Ali, allowing multiple poses without changing the existing layout.
 
         Args:
             progress_callback: Optional callable with ``(current, total, name)``
@@ -74,8 +86,12 @@ class PhotoSorter:
         """
         no_face_names: list[str] = []
 
+        # Subfolders allow several references per student; existing images at
+        # the root stay compatible and still use their filename as the name.
         reference_images = sorted(
-            p for p in self.reference_folder.iterdir() if is_image_file(p)
+            p
+            for p in self.reference_folder.rglob("*")
+            if p.is_file() and is_image_file(p)
         )
 
         if not reference_images:
@@ -83,42 +99,71 @@ class PhotoSorter:
             return no_face_names
 
         total = len(reference_images)
+        reference_students: set[str] = set()
         for current, ref_path in enumerate(reference_images, start=1):
-            student_name = ref_path.stem
+            student_name = (
+                ref_path.parent.name
+                if ref_path.parent != self.reference_folder
+                else ref_path.stem
+            )
+            reference_students.add(student_name)
             if progress_callback:
                 progress_callback(current, total, student_name)
             try:
-                image = face_recognition.load_image_file(str(ref_path))
-                locations = face_recognition.face_locations(image, model="cnn")
-                encodings = face_recognition.face_encodings(
-                    image, known_face_locations=locations, num_jitters=10, model="large"
-                )
+                rgb_image = self._load_and_resize(ref_path)
+                bgr_image = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
 
-                if not encodings:
+                # InsightFace/SCRFD is an OpenCV model and expects BGR input.
+                boxes = self.detector.detect_faces(bgr_image)
+                if not boxes:
                     self.logger.warning(
                         "No face detected in reference photo for %s (%s)",
                         student_name,
                         ref_path.name,
                     )
-                    no_face_names.append(student_name)
                     continue
 
-                if len(encodings) > 1:
+                if len(boxes) > 1:
                     self.logger.warning(
                         "Multiple faces in reference photo for %s — using first face only",
                         student_name,
                     )
 
-                self._student_encodings[student_name] = encodings[0]
-                self.logger.info("Loaded reference for %s", student_name)
+                encodings = self.recognizer.extract_embeddings_for_boxes(
+                    bgr_image, [boxes[0]]
+                )
+
+                if not encodings:
+                    self.logger.warning(
+                        "Could not extract face embedding for %s (%s)",
+                        student_name,
+                        ref_path.name,
+                    )
+                    continue
+
+                student_references = self._student_encodings.setdefault(student_name, [])
+                student_references.append(encodings[0])
+                self.logger.info(
+                    "Loaded reference for %s (%d embedding(s))",
+                    student_name,
+                    len(student_references),
+                )
 
             except Exception as exc:  # noqa: BLE001
                 self.logger.error(
                     "Could not read reference photo %s: %s", ref_path.name, exc
                 )
 
+        no_face_names = sorted(
+            name for name in reference_students if name not in self._student_encodings
+        )
+        total_embeddings = sum(
+            len(embeddings) for embeddings in self._student_encodings.values()
+        )
         self.logger.info(
-            "Loaded %d student reference(s)", len(self._student_encodings)
+            "Loaded %d student(s) with %d reference embedding(s)",
+            len(self._student_encodings),
+            total_embeddings,
         )
         return no_face_names
 
@@ -133,9 +178,9 @@ class PhotoSorter:
     ) -> dict[str, int]:
         """Sort all event photos into per-student output subfolders.
 
-        Processes one image at a time to keep RAM usage low.  For each detected
+        Processes one image at a time to keep RAM usage low. For each detected
         face in a photo the nearest student is identified; the photo is copied
-        to every matched student folder (allowing group shots).  Photos with no
+        to every matched student folder (allowing group shots). Photos with no
         match or no face are copied to ``_unmatched/``.
 
         Args:
@@ -164,6 +209,7 @@ class PhotoSorter:
 
             try:
                 rgb_image = self._load_and_resize(image_path)
+                bgr_image = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
             except UnidentifiedImageError:
                 self.logger.warning("Corrupted image, moving to _unmatched: %s", image_path.name)
                 safe_copy(image_path, self.output_folder / "_unmatched", output_filename, self.logger)
@@ -175,11 +221,12 @@ class PhotoSorter:
                 continue
 
             try:
-                face_locations = face_recognition.face_locations(rgb_image)  # HOG — fast
-                if not face_locations:
-                    face_locations = face_recognition.face_locations(rgb_image, model="cnn")  # CNN fallback
-                face_encodings = face_recognition.face_encodings(
-                    rgb_image, face_locations, num_jitters=3, model="large"
+                # Keep detection and recognition in OpenCV's BGR convention.
+                boxes = self.detector.detect_faces(bgr_image)
+                face_encodings = (
+                    self.recognizer.extract_embeddings_for_boxes(bgr_image, boxes)
+                    if boxes
+                    else []
                 )
             except Exception as exc:  # noqa: BLE001
                 self.logger.error("Face detection failed for %s: %s", image_path.name, exc)
@@ -188,7 +235,15 @@ class PhotoSorter:
                 continue
 
             if not face_encodings:
-                self.logger.info("No face detected: %s → _unmatched", image_path.name)
+                if boxes:
+                    self.logger.warning(
+                        "Detector returned %d face box(es) for %s, but no embedding "
+                        "could be extracted; sending to _unmatched",
+                        len(boxes),
+                        image_path.name,
+                    )
+                else:
+                    self.logger.info("No face detected: %s → _unmatched", image_path.name)
                 safe_copy(image_path, self.output_folder / "_unmatched", output_filename, self.logger)
                 counts["unmatched"] += 1
                 continue
@@ -229,7 +284,7 @@ class PhotoSorter:
         """Open image with Pillow, resize if needed, and return as RGB numpy array.
 
         Resizing large images to at most MAX_IMAGE_DIMENSION on the longest side
-        dramatically reduces face_locations() time on CPU without meaningfully
+        dramatically reduces detection time on CPU without meaningfully
         reducing recognition accuracy.
 
         Raises:
@@ -246,13 +301,13 @@ class PhotoSorter:
             return np.array(img)
 
     def _match_face(self, encoding: np.ndarray) -> str | None:
-        """Find the closest student encoding within DISTANCE_THRESHOLD.
+        """Find the closest student reference within the match threshold.
 
-        Uses face_distance() + argmin rather than compare_faces() booleans so
-        each detected face always matches at most one student — the nearest one.
+        Calculates cosine distance against every available reference, selects
+        the closest result per student, and rejects ambiguous matches.
 
         Args:
-            encoding: 128-d face encoding from face_recognition.
+            encoding: 512-d face feature vector.
 
         Returns:
             Student name string if a match is found, otherwise None.
@@ -260,18 +315,61 @@ class PhotoSorter:
         if not self._student_encodings:
             return None
 
-        names = list(self._student_encodings.keys())
-        known_encodings = np.array(list(self._student_encodings.values()))
-
-        distances = face_recognition.face_distance(known_encodings, encoding)
-        best_idx = int(np.argmin(distances))
-        best_distance = distances[best_idx]
-
-        if best_distance <= self.DISTANCE_THRESHOLD:
-            self.logger.debug(
-                "Face matched to %s (distance=%.4f)", names[best_idx], best_distance
+        # Score each student by their closest reference image. This keeps the
+        # original one-image workflow and improves pose/lighting tolerance when
+        # reference subfolders supply several embeddings for a student.
+        student_distances: list[tuple[str, float]] = []
+        for student_name, references in self._student_encodings.items():
+            distance = min(
+                InsightFaceRecognizer.compute_cosine_distance(reference, encoding)
+                for reference in references
             )
-            return names[best_idx]
+            similarity = 1.0 - distance
+            self.logger.debug(
+                "Recognition candidate %s: similarity=%.4f distance=%.4f",
+                student_name,
+                similarity,
+                distance,
+            )
+            student_distances.append((student_name, distance))
 
-        self.logger.debug("No match — best distance=%.4f", best_distance)
-        return None
+        student_distances.sort(key=lambda item: item[1])
+        best_name, best_distance = student_distances[0]
+        best_similarity = 1.0 - best_distance
+        second_distance = (
+            student_distances[1][1] if len(student_distances) > 1 else None
+        )
+
+        if best_distance > self.DISTANCE_THRESHOLD:
+            self.logger.info(
+                "Unmatched face: reason=distance similarity=%.4f distance=%.4f "
+                "threshold=%.4f best_candidate=%s",
+                best_similarity,
+                best_distance,
+                self.DISTANCE_THRESHOLD,
+                best_name,
+            )
+            return None
+
+        if (
+            second_distance is not None
+            and second_distance - best_distance < self.AMBIGUITY_MARGIN
+        ):
+            self.logger.info(
+                "Unmatched face: reason=ambiguous best=%s distance=%.4f "
+                "second_distance=%.4f margin=%.4f",
+                best_name,
+                best_distance,
+                second_distance,
+                self.AMBIGUITY_MARGIN,
+            )
+            return None
+
+        self.logger.info(
+            "Face matched to %s (similarity=%.4f distance=%.4f threshold=%.4f)",
+            best_name,
+            best_similarity,
+            best_distance,
+            self.DISTANCE_THRESHOLD,
+        )
+        return best_name
