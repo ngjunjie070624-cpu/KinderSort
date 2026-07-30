@@ -50,6 +50,15 @@ class InsightFaceRecognizer:
         self.ctx_id = ctx_id
         self._app: FaceAnalysis | None = None
 
+    def preload_models(self) -> None:
+        """Startup optimization: eagerly load the ArcFace bundle detect_faces uses.
+
+        Called from a background thread after the GUI is shown so the first
+        reference/event photo does not pay the InsightFace + ONNX Runtime
+        initialization cost. extract_embedding() logic is unchanged.
+        """
+        self._get_app()
+
     def _get_app(self) -> FaceAnalysis:
         """Lazy load the InsightFace FaceAnalysis application."""
         if self._app is None:

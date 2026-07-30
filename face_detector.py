@@ -58,6 +58,19 @@ class YOLOFaceDetector:
         self._insight_app: FaceAnalysis | None = None
         self._use_insight_fallback = False
 
+    def preload_models(self) -> None:
+        """Startup optimization: eagerly load the same models detect_faces lazy-loads.
+
+        Called from a background thread after the GUI is shown so YOLO and
+        InsightFace SCRFD weights are ready before the user clicks Start.
+        Detection logic in detect_faces() is unchanged — this only triggers
+        the existing lazy loaders ahead of time.
+        """
+        self._get_yolo_model()
+        # SCRFD is still preloaded when YOLO is active so runtime fallback
+        # (e.g. YOLO misses a face) does not stall on first SCRFD use.
+        self._get_insight_app()
+
     def _get_yolo_model(self) -> YOLO | None:
         """Lazy load YOLO model if weights exist; otherwise trigger fallback."""
         if self._use_insight_fallback:

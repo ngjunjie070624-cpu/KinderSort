@@ -23,6 +23,31 @@ from utils import (
     safe_copy,
 )
 
+# Startup optimization: one shared detector/recognizer pair warmed in a
+# background thread so PhotoSorter reuses preloaded weights instead of
+# constructing (and loading) fresh instances on every Start click.
+_shared_detector: YOLOFaceDetector | None = None
+_shared_recognizer: InsightFaceRecognizer | None = None
+
+
+def preload_ai_models() -> tuple[YOLOFaceDetector, InsightFaceRecognizer]:
+    """Load YOLOv8, InsightFace, and ONNX Runtime once for reuse across runs.
+
+    Called from main.py's background startup thread after the GUI is visible.
+    Imports onnxruntime here so its native DLLs are not loaded on the main
+    thread before the window appears. CPU-only providers are unchanged.
+    """
+    global _shared_detector, _shared_recognizer
+    import onnxruntime  # noqa: F401 — warm ONNX Runtime in the background thread
+
+    if _shared_detector is None:
+        _shared_detector = YOLOFaceDetector()
+    if _shared_recognizer is None:
+        _shared_recognizer = InsightFaceRecognizer()
+    _shared_detector.preload_models()
+    _shared_recognizer.preload_models()
+    return _shared_detector, _shared_recognizer
+
 
 class PhotoSorter:
     """Encapsulates the full sort pipeline from reference loading to file copying.
@@ -80,8 +105,12 @@ class PhotoSorter:
         # ``Student Name.jpg`` files continue to work exactly as before.
         self._student_encodings: dict[str, list[np.ndarray]] = {}
 
-        self.detector = YOLOFaceDetector()
-        self.recognizer = InsightFaceRecognizer()
+        # Reuse models preloaded at startup when available; otherwise fall
+        # back to the original per-instance lazy loaders (unchanged logic).
+        self.detector = _shared_detector if _shared_detector is not None else YOLOFaceDetector()
+        self.recognizer = (
+            _shared_recognizer if _shared_recognizer is not None else InsightFaceRecognizer()
+        )
 
     # ------------------------------------------------------------------
     # Reference loading

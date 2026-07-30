@@ -5,9 +5,11 @@ _run_sorting, _on_ref_progress, _on_progress, _on_done, _on_error, the
 worker thread, the cancel flag) keeps its original name, signature, and
 call sequence. Only widget construction and a handful of *additional*
 StringVars (for the new "current image" / "remaining files" / "phase"
-display, which the old UI didn't surface) were added. sorter.py,
-face_detector.py, and face_recognizer.py are not imported differently and
-were not modified for this change.
+display, which the old UI didn't surface) were added.
+
+Startup optimization: sorter.py / face_detector.py / face_recognizer.py are
+imported lazily in a background thread so heavy AI dependencies do not block
+the GUI from appearing.
 """
 
 import logging
@@ -17,12 +19,15 @@ import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox
+from typing import TYPE_CHECKING
 
 import customtkinter as ctk
 
 from perf_monitor import PerformanceMonitor
-from sorter import PhotoSorter
 from utils import setup_logger
+
+if TYPE_CHECKING:
+    from sorter import PhotoSorter
 
 
 class _FaceCountHandler(logging.Handler):
@@ -94,7 +99,9 @@ class KinderSortApp(ctk.CTk):
         self._face_counter_handler: _FaceCountHandler | None = None
 
         self._progress_var = tk.DoubleVar(value=0.0)
-        self._status_var = tk.StringVar(value="Ready to sort classroom photos.")
+        # Startup optimization: show the loading message immediately; updated
+        # to "Ready" on the main thread once background model load finishes.
+        self._status_var = tk.StringVar(value="Loading AI models...")
         self._progress_text_var = tk.StringVar(value="0%")
         self._stat_vars = {
             "Faces Detected": tk.StringVar(value="0"),
@@ -107,9 +114,14 @@ class KinderSortApp(ctk.CTk):
         # and progress bar). These do not feed back into sorting logic —
         # they're populated from the same callbacks the old UI already used.
         self._appearance_var = tk.StringVar(value="Dark")
-        self._phase_var = tk.StringVar(value="Idle")
+        # Startup optimization: reflect model-loading phase in the status panel.
+        self._phase_var = tk.StringVar(value="Loading")
         self._current_image_var = tk.StringVar(value="—")
         self._remaining_var = tk.StringVar(value="—")
+
+        # Startup optimization: gate Start until preload_ai_models() completes.
+        self._models_ready = False
+        self._photo_sorter_cls: type["PhotoSorter"] | None = None
 
         # --- Low Resource Optimization monitoring (new) ---------------------
         # PerformanceMonitor only reads OS process counters; it has no
@@ -127,6 +139,41 @@ class KinderSortApp(ctk.CTk):
         self._perf_avg_var = tk.StringVar(value="— sec/image")
 
         self._build_ui()
+        # Startup optimization: paint the window first, then load AI models off
+        # the main thread so tkinter stays responsive during initialization.
+        self.after(0, self._start_ai_model_loading)
+
+    def _start_ai_model_loading(self) -> None:
+        """Kick off background preload after the first event-loop tick."""
+        threading.Thread(target=self._load_ai_models, daemon=True).start()
+
+    def _load_ai_models(self) -> None:
+        """Background worker: import heavy AI deps and warm shared model weights."""
+        try:
+            from sorter import PhotoSorter, preload_ai_models
+
+            preload_ai_models()
+            self._photo_sorter_cls = PhotoSorter
+            self.after(0, self._on_models_ready)
+        except Exception as exc:  # noqa: BLE001
+            self.after(0, self._on_models_load_error, str(exc))
+
+    def _on_models_ready(self) -> None:
+        """Main-thread callback: models are loaded — enable sorting."""
+        self._models_ready = True
+        self._phase_var.set("Ready")
+        self._set_status("Ready")
+        self._start_btn.configure(state="normal")
+
+    def _on_models_load_error(self, message: str) -> None:
+        """Main-thread callback: model preload failed — keep Start disabled."""
+        self._models_ready = False
+        self._phase_var.set("Error")
+        self._set_status("Failed to load AI models.")
+        messagebox.showerror(
+            "Model loading failed",
+            f"Could not load AI models:\n\n{message}",
+        )
 
     # ------------------------------------------------------------------
     # Windows 11-style layout (presentation only; no sorting logic here)
@@ -291,6 +338,8 @@ class KinderSortApp(ctk.CTk):
             hover_color=self.SUCCESS_HOVER,
             font=ctk.CTkFont(family="Segoe UI", weight="bold"),
             command=self._on_start,
+            # Startup optimization: disabled until background model load finishes.
+            state="disabled",
         )
         self._start_btn.pack(side="left")
 
@@ -480,6 +529,10 @@ class KinderSortApp(ctk.CTk):
 
     def _on_start(self) -> None:
         """Validate folders and launch the unchanged background sorting worker."""
+        # Startup optimization: ignore clicks while models are still loading.
+        if not self._models_ready or self._photo_sorter_cls is None:
+            return
+
         ref = self._reference_var.get().strip()
         events = self._events_var.get().strip()
         output = self._output_var.get().strip()
@@ -529,10 +582,10 @@ class KinderSortApp(ctk.CTk):
         logger = setup_logger(output_path)
         self._face_counter_handler = _FaceCountHandler(self)
         logger.addHandler(self._face_counter_handler)
-        sorter = PhotoSorter(ref_path, events_path, output_path, logger)
+        sorter = self._photo_sorter_cls(ref_path, events_path, output_path, logger)
         threading.Thread(target=self._run_sorting, args=(sorter,), daemon=True).start()
 
-    def _run_sorting(self, sorter: PhotoSorter) -> None:
+    def _run_sorting(self, sorter: "PhotoSorter") -> None:
         """Original worker sequence: load references, then process event images."""
         try:
             skipped_names = sorter.load_references(progress_callback=self._on_ref_progress)
@@ -656,7 +709,7 @@ class KinderSortApp(ctk.CTk):
         elapsed = int(time.monotonic() - self._sort_start_time) if self._sort_start_time else None
         self._stop_ticker(final_elapsed=elapsed)
         self._stop_perf_tick()
-        self._start_btn.configure(state="normal")
+        self._restore_start_after_run()
         self._cancel_btn.configure(state="disabled")
         self._progress_var.set(1.0)
         self._progress_bar.set(1.0)
@@ -710,11 +763,16 @@ class KinderSortApp(ctk.CTk):
         self._count_event_faces = False
         self._stop_ticker()
         self._stop_perf_tick()
-        self._start_btn.configure(state="normal")
+        self._restore_start_after_run()
         self._cancel_btn.configure(state="disabled")
         self._phase_var.set("Error")
         self._set_status("An error occurred.")
         messagebox.showerror("Unexpected error", message)
+
+    def _restore_start_after_run(self) -> None:
+        """Re-enable Start only when models finished loading at startup."""
+        if self._models_ready:
+            self._start_btn.configure(state="normal")
 
     # ------------------------------------------------------------------
     # CustomTkinter widget helpers
