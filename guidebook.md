@@ -27,7 +27,7 @@ Before running the application, please ensure your computer meets the following 
 2. Wait for the application to finish loading.
 3. The main window will appear.
 
-> **Screenshot 1: Main Window**
+![Main Window](guidebook_assets/gui_main.png)
 
 ---
 
@@ -79,7 +79,7 @@ The application will automatically generate the sorting results here.
 2. Select the folder containing students' reference photos.
 3. Confirm your selection.
 
-> **Screenshot 2: Selecting Reference Folder**
+![Reference Folder](guidebook_assets/select_reference.png)
 
 ---
 
@@ -88,7 +88,7 @@ The application will automatically generate the sorting results here.
 1. Click **Browse** next to Classroom Folder.
 2. Select the folder containing classroom event photos.
 
-> **Screenshot 3: Selecting Classroom Folder**
+![Classroom Folder](guidebook_assets/select_classroom.png)
 
 ---
 
@@ -97,7 +97,7 @@ The application will automatically generate the sorting results here.
 1. Click **Browse** next to Output Folder.
 2. Choose where the sorted photos should be saved.
 
-> **Screenshot 4: Selecting Output Folder**
+![Output Folder](guidebook_assets/select_output.png)
 
 ---
 
@@ -111,7 +111,7 @@ After all folders have been selected:
 
 Please wait until processing is complete.
 
-> **Screenshot 5: Processing Photos**
+![Processing](guidebook_assets/processing.png)
 
 ---
 
@@ -128,7 +128,7 @@ Information may include:
 
 These statistics help monitor the application's resource usage.
 
-> **Screenshot 6: Performance Panel**
+![Performance Panel](guidebook_assets/performance_panel.png)
 
 ---
 
@@ -150,7 +150,7 @@ Each student's folder contains photos where the student was detected.
 
 Photos that do not match any reference face are placed in the **Unmatched** folder.
 
-> **Screenshot 7: Sorting Results**
+![Sorting Results](guidebook_assets/results.png)
 
 ---
 
