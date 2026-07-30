@@ -16,7 +16,7 @@ KinderSort is a desktop app for kindergarten teachers. It scans classroom event 
 Sorting hundreds of event photos by hand — and figuring out which child appears in which photo — is slow and error-prone. KinderSort automates this with a local, **CPU-only** face detection and recognition pipeline, wrapped in a **CustomTkinter** point-and-click interface.
 
 On launch, the GUI appears immediately while AI models load in the background. Once ready, the teacher selects three folders (Reference, Classroom, Output), clicks **Start Sorting**, and reviews live progress plus a completion summary. Matched photos are copied into per-student folders; photos with no recognisable match or no detectable face are copied into `_unmatched/`. Original files are never moved or deleted.
-
+[![Latest Release](https://img.shields.io/github/v/release/ngjunjie070624-cpu/KinderSort)](https://github.com/ngjunjie070624-cpu/KinderSort/releases)
 ---
 
 ## Features
