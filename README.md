@@ -137,7 +137,7 @@ A packaged Windows executable is available from the **GitHub Releases** page.
 
 Steps:
 
-1. Go to the **Releases** page.
+1. Go to the ((https://github.com/ngjunjie070624-cpu/KinderSort/releases/tag/v1.0.0)) page.
 2. Download the latest release.
 3. Extract the ZIP file (if applicable).
 4. Run **KinderSort.exe**.
