@@ -137,11 +137,11 @@ python main.py
 
 **打包后使用（教师）：**
 
-1. 从 [Releases](https://github.com/lerlerchan/KinderSort/releases) 页面下载 `KinderSort.exe`。
+1. 从 [Releases](https://github.com/ngjunjie070624-cpu/KinderSort/releases/tag/v1.0.0) 页面下载 `KinderSort.exe`。
 2. 双击运行 `KinderSort.exe`。
 3. 按上述步骤选择文件夹并开始整理。
 
-完整图文手册：[`guidebook.md`](guidebook.md)
+完整图文手册：[`guidebook.md`](https://github.com/ngjunjie070624-cpu/KinderSort/blob/main/guidebook.md)
 
 **自行打包 `.exe`：**
 

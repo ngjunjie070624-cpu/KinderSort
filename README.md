@@ -95,13 +95,44 @@ On launch, the GUI appears immediately while AI models load in the background. O
 
 ## Installation
 
+### 1. Clone the repository
+
 ```bash
-git clone https://github.com/lerlerchan/KinderSort.git
+git clone https://github.com/ngjunjie070624-cpu/KinderSort.git
 cd KinderSort
+```
+
+### 2. Create a virtual environment (recommended)
+
+```bash
 python -m venv .venv
-.venv\Scripts\activate        # Windows
+```
+
+Activate the virtual environment:
+**Windows**
+
+```bash
+.venv\Scripts\activate
+```
+**macOS / Linux**
+
+```bash
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
 pip install -r requirements.txt
 ```
+
+### 4. Run the application
+
+```bash
+python main.py
+```
+
+
 
 > **First run needs internet, once.** InsightFace downloads the `buffalo_l` model (~300 MB) to `~/.insightface/models` the first time the app runs. After that download, sorting runs fully offline.
 
@@ -115,7 +146,7 @@ pip install -r requirements.txt
 - **Disk:** ~2 GB free (model weights + dependencies)
 - **Network:** Internet for the one-time InsightFace model download described above
 
-See [`requirements.txt`](requirements.txt) for package versions:
+See [`requirements.txt`](https://github.com/ngjunjie070624-cpu/KinderSort/blob/main/requirements.txt) for package versions:
 
 ```
 opencv-python, ultralytics, insightface, onnxruntime, numpy, Pillow, psutil, customtkinter
@@ -139,11 +170,11 @@ python main.py
 
 **Packaged app (teachers):**
 
-1. Download `KinderSort.exe` from the [Releases](https://github.com/lerlerchan/KinderSort/releases) page.
+1. Download `KinderSort.exe` from the [Releases]((https://github.com/ngjunjie070624-cpu/KinderSort/releases/tag/v1.0.0)) page.
 2. Double-click `KinderSort.exe`.
 3. Follow the same folder-selection steps above.
 
-Full illustrated guide: [`guidebook.md`](guidebook.md)
+Full illustrated guide: [`guidebook.md`](https://github.com/ngjunjie070624-cpu/KinderSort/blob/main/guidebook.md)
 
 **Build the `.exe` yourself:**
 
