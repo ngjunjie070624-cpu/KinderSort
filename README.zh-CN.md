@@ -93,12 +93,41 @@ KinderSort 是一款面向幼儿园教师的桌面应用。它会扫描活动照
 
 ## 安装
 
+### 1. Clone the repository
+
 ```bash
-git clone https://github.com/lerlerchan/KinderSort.git
+git clone https://github.com/ngjunjie070624-cpu/KinderSort.git
 cd KinderSort
+```
+
+### 2. Create a virtual environment (recommended)
+
+```bash
 python -m venv .venv
-.venv\Scripts\activate        # Windows
+```
+
+Activate the virtual environment:
+**Windows**
+
+```bash
+.venv\Scripts\activate
+```
+**macOS / Linux**
+
+```bash
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
 pip install -r requirements.txt
+```
+
+### 4. Run the application
+
+```bash
+python main.py
 ```
 
 > **首次运行需要联网。** InsightFace 会在程序第一次运行时，将 `buffalo_l` 模型（约 300 MB）下载到 `~/.insightface/models`。下载完成后，后续整理操作即可完全离线运行。
