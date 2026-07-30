@@ -135,7 +135,7 @@ python main.py
 
 步骤：
 
-1. 前往本项目的 **GitHub Releases** 页面。
+1. 前往本项目的**[**Releases**](https://github.com/ngjunjie070624-cpu/KinderSort/releases/tag/v1.0.0)** 页面。
 2. 下载最新版本。
 3. （如果下载的是 ZIP）先解压缩。
 4. 双击 **KinderSort.exe** 即可运行。
