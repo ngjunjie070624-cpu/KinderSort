@@ -95,13 +95,44 @@ On launch, the GUI appears immediately while AI models load in the background. O
 
 ## Installation
 
+### 1. Clone the repository
+
 ```bash
-git clone https://github.com/lerlerchan/KinderSort.git
+git clone https://github.com/ngjunjie070624-cpu/KinderSort.git
 cd KinderSort
+```
+
+### 2. Create a virtual environment (recommended)
+
+```bash
 python -m venv .venv
-.venv\Scripts\activate        # Windows
+```
+
+Activate the virtual environment:
+**Windows**
+
+```bash
+.venv\Scripts\activate
+```
+**macOS / Linux**
+
+```bash
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
 pip install -r requirements.txt
 ```
+
+### 4. Run the application
+
+```bash
+python main.py
+```
+
+
 
 > **First run needs internet, once.** InsightFace downloads the `buffalo_l` model (~300 MB) to `~/.insightface/models` the first time the app runs. After that download, sorting runs fully offline.
 
