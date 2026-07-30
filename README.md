@@ -115,7 +115,7 @@ pip install -r requirements.txt
 - **Disk:** ~2 GB free (model weights + dependencies)
 - **Network:** Internet for the one-time InsightFace model download described above
 
-See [`requirements.txt`](https://github.com/ngjunjie070624-cpu/KinderSort/blob/main/README.md) for package versions:
+See [`requirements.txt`](https://github.com/ngjunjie070624-cpu/KinderSort/blob/main/requirements.txt) for package versions:
 
 ```
 opencv-python, ultralytics, insightface, onnxruntime, numpy, Pillow, psutil, customtkinter
@@ -139,7 +139,7 @@ python main.py
 
 **Packaged app (teachers):**
 
-1. Download `KinderSort.exe` from the [Releases]([https://github.com/lerlerchan/KinderSort/releases](https://github.com/ngjunjie070624-cpu/KinderSort/releases/tag/v1.0.0)) page.
+1. Download `KinderSort.exe` from the [Releases]((https://github.com/ngjunjie070624-cpu/KinderSort/releases/tag/v1.0.0)) page.
 2. Double-click `KinderSort.exe`.
 3. Follow the same folder-selection steps above.
 
