@@ -132,11 +132,16 @@ class KinderSortApp(ctk.CTk):
         self._perf_monitor = PerformanceMonitor()
         self._perf_tick_id: str | None = None
         self._images_processed: int = 0
-        self._perf_cpu_var = tk.StringVar(value="0%")
-        self._perf_mem_var = tk.StringVar(value="0 MB")
-        self._perf_processed_var = tk.StringVar(value="0 Images")
-        self._perf_elapsed_var = tk.StringVar(value="0.0 sec")
-        self._perf_avg_var = tk.StringVar(value="— sec/image")
+        # Low Resource Optimization panel — eight assignment-ready metrics,
+        # refreshed at 1 Hz by _perf_tick() via PerformanceMonitor only.
+        self._perf_current_cpu_var = tk.StringVar(value="0.0%")
+        self._perf_avg_cpu_var = tk.StringVar(value="0.0%")
+        self._perf_current_mem_var = tk.StringVar(value="0 MB")
+        self._perf_peak_mem_var = tk.StringVar(value="0 MB")
+        self._perf_avg_mem_var = tk.StringVar(value="0 MB")
+        self._perf_total_time_var = tk.StringVar(value="0.0 sec")
+        self._perf_avg_time_var = tk.StringVar(value="— sec/image")
+        self._perf_images_var = tk.StringVar(value="0")
 
         self._build_ui()
         # Startup optimization: paint the window first, then load AI models off
@@ -454,10 +459,11 @@ class KinderSortApp(ctk.CTk):
     # -- System Performance panel (Low Resource Optimization monitoring) --
 
     def _build_performance_card(self, parent: ctk.CTkFrame) -> None:
-        """Small 'System Performance' panel: CPU%, RAM, processed count,
-        elapsed time, and average time/image, refreshed by _perf_tick()
-        while sorting. This card is purely a display for numbers produced
-        by PerformanceMonitor/psutil — it has no effect on sorting."""
+        """System Performance panel for the Low Resource Optimization assignment.
+
+        Displays eight process-level metrics refreshed by _perf_tick() at
+        1 Hz. All values come from PerformanceMonitor/psutil — no effect
+        on face detection or recognition."""
         card = ctk.CTkFrame(
             parent, fg_color=self.CARD, corner_radius=self.CARD_CORNER,
             border_width=1, border_color=self.CARD_BORDER,
@@ -471,11 +477,14 @@ class KinderSortApp(ctk.CTk):
         ).grid(row=0, column=0, columnspan=2, sticky="w", padx=18, pady=(16, 10))
 
         rows = [
-            ("CPU Usage", self._perf_cpu_var),
-            ("Memory", self._perf_mem_var),
-            ("Processed", self._perf_processed_var),
-            ("Elapsed Time", self._perf_elapsed_var),
-            ("Average", self._perf_avg_var),
+            ("Current CPU Usage", self._perf_current_cpu_var),
+            ("Average CPU Usage", self._perf_avg_cpu_var),
+            ("Current Memory Usage", self._perf_current_mem_var),
+            ("Peak Memory Usage", self._perf_peak_mem_var),
+            ("Average Memory Usage", self._perf_avg_mem_var),
+            ("Total Processing Time", self._perf_total_time_var),
+            ("Average Time per Image", self._perf_avg_time_var),
+            ("Images Processed", self._perf_images_var),
         ]
         for i, (label, var) in enumerate(rows, start=1):
             ctk.CTkLabel(
@@ -571,11 +580,7 @@ class KinderSortApp(ctk.CTk):
         # --- Start performance monitoring alongside the existing timer ---
         # Reset counters and (re)prime psutil's CPU sampler for this run.
         self._images_processed = 0
-        self._perf_cpu_var.set("0%")
-        self._perf_mem_var.set("0 MB")
-        self._perf_processed_var.set("0 Images")
-        self._perf_elapsed_var.set("0.0 sec")
-        self._perf_avg_var.set("— sec/image")
+        self._reset_perf_panel()
         self._perf_monitor.start()
         self._start_perf_tick()
 
@@ -632,6 +637,34 @@ class KinderSortApp(ctk.CTk):
             self._set_stat("Processing Time", f"{minutes:02d}:{seconds:02d}")
         self._sort_start_time = None
 
+    def _reset_perf_panel(self) -> None:
+        """Clear all performance panel fields before a new sort run."""
+        self._perf_current_cpu_var.set("0.0%")
+        self._perf_avg_cpu_var.set("0.0%")
+        self._perf_current_mem_var.set("0 MB")
+        self._perf_peak_mem_var.set("0 MB")
+        self._perf_avg_mem_var.set("0 MB")
+        self._perf_total_time_var.set("0.0 sec")
+        self._perf_avg_time_var.set("— sec/image")
+        self._perf_images_var.set("0")
+
+    def _update_perf_panel(self, reading: dict, images_processed: int) -> None:
+        """Push one PerformanceMonitor reading into all eight panel fields."""
+        self._perf_current_cpu_var.set(f"{reading['cpu_percent']:.1f}%")
+        self._perf_avg_cpu_var.set(f"{reading['avg_cpu_percent']:.1f}%")
+        self._perf_current_mem_var.set(f"{reading['memory_mb']:.0f} MB")
+        self._perf_peak_mem_var.set(f"{reading['peak_memory_mb']:.0f} MB")
+        self._perf_avg_mem_var.set(f"{reading['avg_memory_mb']:.0f} MB")
+        elapsed = reading.get("total_time_sec", reading.get("elapsed_sec", 0.0))
+        self._perf_total_time_var.set(f"{elapsed:.1f} sec")
+        avg_time = reading.get("avg_time_per_image_sec")
+        if avg_time is None:
+            avg_time = (elapsed / images_processed) if images_processed else None
+        self._perf_avg_time_var.set(
+            f"{avg_time:.2f} sec/image" if avg_time is not None else "— sec/image"
+        )
+        self._perf_images_var.set(str(images_processed))
+
     def _start_perf_tick(self) -> None:
         """Begin the periodic 'System Performance' refresh."""
         self._perf_tick()
@@ -650,12 +683,7 @@ class KinderSortApp(ctk.CTk):
         readable live readout.
         """
         reading = self._perf_monitor.sample()
-        self._perf_cpu_var.set(f"{reading['cpu_percent']:.0f}%")
-        self._perf_mem_var.set(f"{reading['memory_mb']:.0f} MB")
-        self._perf_processed_var.set(f"{self._images_processed} Images")
-        self._perf_elapsed_var.set(f"{reading['elapsed_sec']:.1f} sec")
-        avg = (reading["elapsed_sec"] / self._images_processed) if self._images_processed else None
-        self._perf_avg_var.set(f"{avg:.2f} sec/image" if avg is not None else "— sec/image")
+        self._update_perf_panel(reading, self._images_processed)
         self._perf_tick_id = self.after(1000, self._perf_tick)
 
     def _stop_perf_tick(self) -> None:
@@ -725,16 +753,11 @@ class KinderSortApp(ctk.CTk):
         self._set_status(status)
 
         # --- Final performance summary (requirement 4) -----------------
-        # One last sample brings the CPU-average/peak-memory figures up to
-        # the true end of the run rather than stopping at the last 1-second
-        # tick, which could be up to ~1s stale.
-        perf = self._perf_monitor.sample()
+        # One last sample brings averages/peaks up to the true end of the
+        # run rather than stopping at the last 1-second tick.
+        self._perf_monitor.sample()
         perf_final = self._perf_monitor.summary(self._images_processed)
-        self._perf_cpu_var.set(f"{perf['cpu_percent']:.0f}%")
-        self._perf_mem_var.set(f"{perf_final['peak_memory_mb']:.0f} MB")
-        self._perf_processed_var.set(f"{perf_final['images_processed']} Images")
-        self._perf_elapsed_var.set(f"{perf_final['total_time_sec']:.1f} sec")
-        self._perf_avg_var.set(f"{perf_final['avg_time_per_image_sec']:.2f} sec/image")
+        self._update_perf_panel(perf_final, self._images_processed)
 
         self._write_summary("\n".join([
             status,
@@ -746,11 +769,14 @@ class KinderSortApp(ctk.CTk):
             f"Skipped (errors)   : {summary['skipped']}",
             "",
             "--- Performance ---",
-            f"CPU Average        : {perf_final['avg_cpu_percent']:.0f}%",
+            f"Current CPU Usage  : {perf_final['cpu_percent']:.1f}%",
+            f"Average CPU Usage  : {perf_final['avg_cpu_percent']:.1f}%",
+            f"Current Memory     : {perf_final['memory_mb']:.0f} MB",
             f"Peak Memory        : {perf_final['peak_memory_mb']:.0f} MB",
-            f"Images             : {perf_final['images_processed']}",
+            f"Average Memory     : {perf_final['avg_memory_mb']:.0f} MB",
             f"Total Time         : {perf_final['total_time_sec']:.1f} sec",
-            f"Average Time/Image : {perf_final['avg_time_per_image_sec']:.2f} sec",
+            f"Avg Time/Image     : {perf_final['avg_time_per_image_sec']:.2f} sec",
+            f"Images Processed   : {perf_final['images_processed']}",
         ]))
         if summary["total"] == 0:
             messagebox.showwarning(
