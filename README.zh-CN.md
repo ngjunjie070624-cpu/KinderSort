@@ -1,79 +1,97 @@
 # KinderSort — 幼儿园学生照片整理工具
 
-[![平台](https://img.shields.io/badge/平台-Windows-0078D6?logo=windows&logoColor=white)](https://github.com/lerlerchan/KinderSort/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)](https://github.com/lerlerchan/KinderSort/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![无需 GPU](https://img.shields.io/badge/GPU-不需要-orange)](https://github.com/lerlerchan/KinderSort)
-[![最新版本](https://img.shields.io/github/v/release/lerlerchan/KinderSort?color=blue&logo=github)](https://github.com/lerlerchan/KinderSort/releases)
+[![CPU Only](https://img.shields.io/badge/GPU-not_required-orange)](https://github.com/lerlerchan/KinderSort)
+[![Release](https://img.shields.io/github/v/release/lerlerchan/KinderSort?color=blue&logo=github)](https://github.com/lerlerchan/KinderSort/releases)
 
 [English](README.md)
 
-KinderSort 是一个面向幼儿园老师的桌面工具。它会扫描活动照片,将检测到的人脸与参考照片文件夹比对,并自动把照片复制到对应学生的文件夹——无需任何编程知识。
+KinderSort 是一款面向幼儿园教师的桌面应用。它会扫描活动照片，检测并识别人脸，与参考照片文件夹进行比对，并自动将每张照片复制到对应学生的输出文件夹——无需任何编程知识。
 
 ---
 
-## 1. 项目简介
+## 项目概述
 
-手动整理成百上千张活动照片、辨认每张照片里有哪些学生非常耗时且容易出错。KinderSort 通过本地、纯 CPU 运行的人脸检测与识别流程自动完成这项工作,并配有简单的图形界面,老师只需双击一个文件即可运行。
+手动整理成百上千张活动照片、辨认每张照片里有哪些孩子，既耗时又容易出错。KinderSort 通过本地、**纯 CPU** 运行的人脸检测与识别流程自动完成这项工作，并配有 **CustomTkinter** 图形界面，点击即可操作。
+
+启动时，界面会立即显示，AI 模型在后台加载。就绪后，教师选择三个文件夹（参考照片、活动照片、输出目录），点击 **Start Sorting**，即可查看实时进度和完成摘要。匹配成功的照片复制到各学生文件夹；无法识别或无检测到人脸的照片复制到 `_unmatched/`。原始文件不会被移动或删除。
 
 ---
 
-## 2. 功能亮点
+## 功能特性
 
 | 功能 | 说明 |
 |---|---|
-| 自动整理 | 检测并识别学生人脸,将匹配的照片复制到对应学生文件夹 |
-| 支持合照 | 一张照片会被复制到照片中出现的每一位学生的文件夹 |
-| 仅使用 CPU | 无需显卡即可在普通 Windows 电脑上运行 |
-| 现代化界面 | CustomTkinter 界面,支持浅色/深色模式,Windows 11 风格卡片 |
-| 安全操作 | 照片只会**复制**,不会移动或删除——原始文件始终安全 |
-| 实时性能面板 | 整理过程中实时显示 CPU、内存、耗时与处理速度(基于 `psutil`) |
-| 操作日志 | 输出目录中自动生成详细的 `kindersort_log.txt` |
-| 支持取消 | 整理过程中可随时取消,已处理的照片会保留 |
+| 自动人脸检测与整理 | 检测活动照片中的人脸，与参考学生比对，复制到 `Output/<StudentName>/` |
+| 支持合照 | 一张照片会复制到所有匹配学生的文件夹 |
+| 未匹配处理 | 无人脸、无法提取特征或匹配置信度不足的照片放入 `Output/_unmatched/` |
+| 纯 CPU 推理 | 所有模型通过 ONNX Runtime 在 CPU 上运行，无需显卡 |
+| CustomTkinter 界面 | Windows 11 风格，支持浅色/深色模式，含进度条、状态面板和运行摘要 |
+| 快速启动 | 窗口立即显示；YOLOv8、InsightFace、ONNX Runtime 在后台线程加载 |
+| 实时状态面板 | 显示检测到的人脸数、匹配数、未匹配数和已用处理时间 |
+| 系统性能面板 | 每次整理运行期间，通过 `psutil` 实时显示 8 项进程级指标（CPU、内存、耗时） |
+| 安全文件操作 | 照片仅**复制**，不移动、不删除——原始文件始终保留 |
+| 操作日志 | 输出目录自动生成详细日志 `kindersort_log.txt` |
+| 支持取消 | 整理过程中可随时取消，已处理的照片会保留 |
+| 多张参考照片 | 支持根目录 `StudentName.jpg`，或在 `Reference/StudentName/` 子文件夹中存放多张参考图 |
 
 ---
 
-## 3. AI 架构
+## AI 架构
 
 ```
  参考照片 ─┐
-           ├─▶ 人脸检测(InsightFace SCRFD,可选 YOLOv8)─▶ 人脸框
+           ├─▶ 人脸检测（YOLOv8 可选 → InsightFace SCRFD 回退）─▶ 人脸框
  活动照片 ─┘
                           │
                           ▼
-              人脸识别(InsightFace ArcFace, buffalo_l)
+              人脸识别（InsightFace ArcFace，buffalo_l）
                           │
-                  512 维归一化特征向量
+                  512 维 L2 归一化特征向量
                           │
                           ▼
         与每位学生的参考特征向量计算余弦距离——
-        在阈值范围内距离最近、且与次近结果拉开明显差距的学生获胜
+        距离阈值 0.55 内最近、且与次近结果拉开差距（< 0.02）的学生获胜
                           │
                           ▼
-        匹配成功 → 复制到 Output/<学生姓名>/(合照可复制到多个文件夹)
-        未检测到人脸 / 无匹配 → 复制到 Output/_unmatched/
+        匹配成功 → 复制到 Output/<StudentName>/（合照可复制到多个文件夹）
+        无匹配 / 无人脸 → 复制到 Output/_unmatched/
 ```
 
-**检测:** `face_detector.py` 主要使用 InsightFace 的 SCRFD 检测器(CPU、ONNX Runtime 后端)。代码中保留了可选的 YOLOv8 人脸检测路径——如果配置的权重文件不存在,或不是人脸检测模型,程序会自动回退到 SCRFD,默认配置下无需手动干预。
+**检测（`face_detector.py`）：** 当权重文件存在且有效时，优先尝试 YOLOv8 人脸模型（`yolov8n-face.pt`）。若权重缺失、无效或不是人脸训练模型，流程自动回退到 **InsightFace SCRFD**（CPU，ONNX Runtime 后端）。两条路径均返回 `(x1, y1, x2, y2)` 格式的人脸框。
 
-**识别:** `face_recognizer.py` 使用 InsightFace 的 `buffalo_l` ArcFace 模型,为每张检测到的人脸生成 512 维、L2 归一化的特征向量。匹配逻辑(`sorter.py`)将每个特征向量与每位学生存储的参考特征向量计算余弦距离,选择阈值内距离最近的学生,并拒绝两位学生距离过于接近(模糊匹配)的情况。
+**识别（`face_recognizer.py`）：** 使用 InsightFace **`buffalo_l`** 模型包中的 **ArcFace**，为每张检测到的人脸生成 512 维、L2 归一化的特征向量。
+
+**匹配（`sorter.py`）：** 将活动照片中每张人脸的特征向量与所有学生的参考特征计算余弦距离。距离阈值 `0.55` 内最近的匹配被接受；两名学生距离过于接近（差距 `< 0.02`）时视为模糊匹配并拒绝。参考照片中有多张人脸时，取面积最大的人脸作为该学生。
+
+**图像预处理：** 检测前将活动照片和参考照片的长边缩放至最多 1000 像素，在基本不影响准确率的前提下降低 CPU 负载。
 
 ---
 
-## 4. 技术栈
+## 技术栈
 
-| 组件 | 库 |
+[![OpenCV](https://img.shields.io/badge/OpenCV-image_processing-red)](https://opencv.org/)
+[![InsightFace](https://img.shields.io/badge/InsightFace-SCRFD_+_ArcFace-blueviolet)](https://github.com/deepinsight/insightface)
+[![Ultralytics YOLOv8](https://img.shields.io/badge/YOLOv8-optional_detector-yellow)](https://github.com/ultralytics/ultralytics)
+[![ONNX Runtime](https://img.shields.io/badge/ONNX_Runtime-CPU-lightgrey)](https://onnxruntime.ai/)
+[![CustomTkinter](https://img.shields.io/badge/CustomTkinter-GUI-1E90FF)](https://github.com/TomSchimansky/CustomTkinter)
+[![psutil](https://img.shields.io/badge/psutil-resource_monitoring-green)](https://github.com/giampaolo/psutil)
+[![PyInstaller](https://img.shields.io/badge/PyInstaller-packaging-purple)](https://pyinstaller.org/)
+
+| 组件 | 库 / 说明 |
 |---|---|
-| 人脸检测 | InsightFace SCRFD(默认)/ Ultralytics YOLOv8(可选) |
-| 人脸识别 | InsightFace ArcFace(`buffalo_l`),通过 ONNX Runtime(CPU)运行 |
+| 人脸检测 | InsightFace SCRFD（默认回退）/ Ultralytics YOLOv8（可选，`yolov8n-face.pt`） |
+| 人脸识别 | InsightFace ArcFace（`buffalo_l`），通过 ONNX Runtime（`CPUExecutionProvider`）运行 |
 | 图像处理 | OpenCV、Pillow |
 | 图形界面 | CustomTkinter |
-| 资源监控 | psutil |
-| 打包工具 | PyInstaller |
+| 资源监控 | psutil（`perf_monitor.py`） |
+| 打包工具 | PyInstaller（`KinderSort.spec`） |
 | 开发语言 | Python 3.10+ |
 
 ---
 
-## 5. 安装指南
+## 安装
 
 ```bash
 git clone https://github.com/lerlerchan/KinderSort.git
@@ -83,109 +101,166 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-> **首次运行需要联网。** InsightFace 会在程序第一次运行时,将 `buffalo_l` 模型(约 300MB)下载到 `~/.insightface/models`。下载完成后,后续整理操作即可完全离线运行。此说明是对早期文档中"从第一次启动就完全离线"这一表述的修正。
+> **首次运行需要联网。** InsightFace 会在程序第一次运行时，将 `buffalo_l` 模型（约 300 MB）下载到 `~/.insightface/models`。下载完成后，后续整理操作即可完全离线运行。
 
 ---
 
-## 6. 环境要求
+## 环境要求
 
-- Windows 10/11(源码版本也可在 Ubuntu 上开发运行)
-- Python 3.10+(仅源码运行需要,打包后的 `.exe` 不需要)
-- 无需显卡——仅使用 CPU
-- 约 2GB 可用磁盘空间(模型权重 + 依赖库)
-- 首次运行需要联网以下载模型(见上文)
+- **操作系统：** Windows 10/11（主要目标平台；源码亦可在 Linux 上开发运行）
+- **Python：** 3.10+（仅源码运行需要，打包后的 `.exe` 不需要）
+- **显卡：** 不需要——纯 CPU 运行
+- **磁盘空间：** 约 2 GB 可用空间（模型权重 + 依赖库）
+- **网络：** 首次运行需联网下载 InsightFace 模型（见上文）
 
-具体依赖版本见 [`requirements.txt`](requirements.txt)。
+依赖包版本见 [`requirements.txt`](requirements.txt)：
+
+```
+opencv-python, ultralytics, insightface, onnxruntime, numpy, Pillow, psutil, customtkinter
+```
 
 ---
 
-## 7. 运行方法
+## 运行方法
 
-**源码运行:**
+**源码运行：**
+
 ```bash
 python main.py
 ```
 
-**打包后使用(老师):**
-1. 从 [Releases](https://github.com/lerlerchan/KinderSort/releases) 页面下载 `KinderSort.exe`
-2. 双击运行 `KinderSort.exe`
-3. 选择参考照片、活动照片、输出三个文件夹
-4. 点击 **Start Sorting**
-5. 查看完成摘要并打开输出目录
+1. 等待状态显示 **"Ready"**（窗口打开后，AI 模型在后台加载）。
+2. 选择 **Reference**（参考照片）、**Classroom**（活动照片）、**Output**（输出目录）三个文件夹。
+3. 点击 **▶ Start Sorting**。
+4. 整理完成后，查看状态面板、系统性能面板和运行摘要。
+5. 打开输出目录——匹配成功的照片在 `<StudentName>/` 文件夹；未匹配的照片在 `_unmatched/`。
 
-完整图文手册见:[`guidebook.md`](guidebook.md)
+**打包后使用（教师）：**
 
-**自行打包 `.exe`:**
+1. 从 [Releases](https://github.com/lerlerchan/KinderSort/releases) 页面下载 `KinderSort.exe`。
+2. 双击运行 `KinderSort.exe`。
+3. 按上述步骤选择文件夹并开始整理。
+
+完整图文手册：[`guidebook.md`](guidebook.md)
+
+**自行打包 `.exe`：**
+
 ```bash
 pip install pyinstaller
 pyinstaller KinderSort.spec
-# 输出:dist/KinderSort.exe
+# 输出：dist/KinderSort.exe
 ```
 
 ---
 
-## 8. 目录结构
+## 目录结构
+
+**代码仓库：**
 
 ```
-kindersort/
-├── main.py              ← 图形界面入口(CustomTkinter)
-├── sorter.py             ← PhotoSorter:参考加载 + 整理流程
-├── face_detector.py      ← 人脸检测(SCRFD / 可选 YOLOv8)
-├── face_recognizer.py    ← 人脸特征提取 + 余弦距离匹配
-├── utils.py               ← 文件处理、命名、日志设置
-├── perf_monitor.py        ← 基于 psutil 的 CPU/内存监控(供界面性能面板使用)
-├── requirements.txt       ← 固定版本依赖
-├── KinderSort.spec        ← PyInstaller 打包配置
-├── README.md               ← 英文说明
-├── README.zh-CN.md         ← 本文件
-├── guidebook.md             ← 面向老师的图文使用手册
+KinderSort/
+├── main.py              ← CustomTkinter 图形界面入口
+├── sorter.py             ← PhotoSorter：参考加载 + 整理流程
+├── face_detector.py      ← 人脸检测（YOLOv8 / SCRFD 回退）
+├── face_recognizer.py    ← ArcFace 特征提取
+├── perf_monitor.py       ← 基于 psutil 的 CPU/内存监控
+├── utils.py              ← 文件处理、命名、日志设置
+├── requirements.txt      ← Python 依赖
+├── KinderSort.spec       ← PyInstaller 打包配置
+├── guidebook.md          ← 面向教师的使用手册
+├── README.md             ← 英文说明
+├── README.zh-CN.md       ← 本文件
+├── quick_screenshots.py  ← 开发者工具：截取界面截图
+├── generate_guide.py     ← 开发者工具：重新生成手册素材
+├── docx_export.py        ← 开发者工具：导出 Word 版手册
 └── dist/
-    └── KinderSort.exe        ← 打包输出(打包后生成)
+    └── KinderSort.exe    ← 打包输出（打包后生成）
 ```
 
+**运行时（教师选择的文件夹，不在代码仓库中）：**
+
+```
+Reference/                  Classroom/                Output/
+  Ali.jpg                     Sports_Day/               Ali/
+  Siti.png                    Concert/                  Siti/
+  Kumar/                      Field_Trip/               Kumar/
+    Kumar_2.jpg                                         _unmatched/
+                                                          kindersort_log.txt
+```
+
+- **参考照片文件夹：** 根目录放置单张参考图（如 `Ali.jpg`），和/或在子文件夹中放置多张参考图（如 `Kumar/Kumar_2.jpg`）。
+- **活动照片文件夹：** 按活动分子文件夹存放（如 `Sports_Day/`、`Concert/`）。若子文件夹中没有图片，则扫描活动文件夹根目录下的图片。
+- **输出文件夹：** 匹配成功的照片复制到各学生文件夹，其余放入 `_unmatched/`。日志文件：`kindersort_log.txt`。
+
+支持的图片格式：`.jpg`、`.jpeg`、`.png`、`.bmp`、`.webp`
+
 ---
 
-## 9. 界面截图
+## 性能监控
 
-*(占位——由于界面自上次截图后已更新,提交前请使用 `quick_screenshots.py` 针对当前界面重新生成截图。)*
+KinderSort 在图形界面中提供 **System Performance**（系统性能）面板，由 `perf_monitor.py` 和 **psutil** 驱动。用户点击 **Start Sorting** 后开始监控，以每秒 1 次（1 Hz）的频率采样 KinderSort 进程，直至整理结束。
 
----
-
-## 10. 性能总结
-
-通过内置的"System Performance"面板(基于 `psutil`)测得,纯 CPU 运行、无需显卡:
-
-| 指标 | 参考数值* |
+| 指标 | 说明 |
 |---|---|
-| 整理时 CPU 占用 | 约单核 15%–25%(视图片大小/数量而定) |
-| 峰值内存 | 约 250–300 MB |
-| 处理速度 | 每张约 0.3–1.5 秒,视分辨率与人脸数量而定 |
+| Current CPU Usage（当前 CPU 占用） | 最新进程 CPU 份额，归一化为 **0–100%** 整体利用率 |
+| Average CPU Usage（平均 CPU 占用） | 本次运行所有采样点的 CPU 平均值 |
+| Current Memory Usage（当前内存占用） | 最新常驻内存（RSS），单位 MB |
+| Peak Memory Usage（峰值内存占用） | 本次运行观察到的最高 RSS，单位 MB |
+| Average Memory Usage（平均内存占用） | 本次运行所有采样点的 RSS 平均值，单位 MB |
+| Total Processing Time（总处理时间） | 从点击 Start 到完成的秒数 |
+| Average Time per Image（平均每张耗时） | 总时间 ÷ 已处理图片数 |
+| Images Processed（已处理图片数） | 整理流程已完成的活动照片数量 |
 
-\* *以上数据来自开发测试,仅供参考,并非性能保证——实际数值取决于老师所用电脑的硬件配置和照片分辨率。可在完成摘要的"Performance"部分查看目标机器上的真实数据。*
+上述数据同时显示在 **Run Summary**（运行摘要）文本框中，并写入整理完成后的日志摘要部分。
 
----
+**CPU 归一化：** psutil 报告的进程 CPU 占用是所有逻辑核心的累加值（例如 12 线程 CPU 上可能显示 620%）。KinderSort 会除以逻辑核心数，使面板显示整体 CPU 份额（例如约 52%），与任务管理器的整体 CPU 视图一致。
 
-## 11. 未来改进方向
-
-- 将 InsightFace `buffalo_l` 模型权重打包进 PyInstaller 生成的 `.exe`,使首次运行也能完全离线(目前仍需联网一次以下载模型)
-- 针对参考照片增加多尺度二次检测,减少合照式参考照片中漏检的人脸
-- 在界面中直接引导/强制每位学生提供多张参考照片(目前仅通过文档说明支持 `Reference/学生姓名/*.jpg` 子文件夹方式)
-- 在文本日志之外,增加匹配结果的 CSV/Excel 导出
-- 为 `sorter.py` 的匹配逻辑补充基础自动化测试(目前依赖人工验证)
-
----
-
-## 12. 许可协议
-
-本仓库目前未包含许可证文件。如计划公开发布供他人使用,请在发布前添加 `LICENSE` 文件(例如 MIT 协议);在此之前,默认版权保留所有权利。
+监控范围**仅限 KinderSort 进程**，不测量整个系统；采样使用非阻塞的 `cpu_percent(interval=None)`，不会阻塞图形界面或后台整理线程。
 
 ---
 
-## 开发者本地运行(源码)
+## 低资源优化
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python main.py
-```
+KinderSort 面向普通教室笔记本电脑设计，无需独立显卡：
+
+| 优化手段 | 实现方式 |
+|---|---|
+| 纯 CPU 推理 | 所有 ONNX Runtime 会话使用 `CPUExecutionProvider`；全程 `ctx_id=-1` |
+| 图像降采样 | 检测前长边限制为 1000 像素（`sorter.py` 中的 `MAX_IMAGE_DIMENSION`） |
+| 懒加载 + 共享模型 | 启动时在后台线程加载一次 AI 权重，后续整理运行复用同一实例 |
+| 响应式启动 | 界面立即渲染；重型依赖（InsightFace、YOLOv8、ONNX Runtime）在非主线程加载 |
+| 逐张处理 | 活动照片按顺序逐张处理，保持内存占用稳定 |
+| 轻量监控 | psutil 以 1 Hz 采样——每次仅两次内核计数器读取，不侵入识别流程 |
+| 复制而非移动 | 文件 I/O 使用 `shutil.copy2`；原始文件不会被删除 |
+
+这些设计使内存占用可预测，并使系统性能面板成为展示低资源优化效果的可靠依据，适合课程作业演示。
+
+---
+
+## 界面截图
+
+| 步骤 | 截图 |
+|---|---|
+| 应用启动（模型加载中） | `guidebook_assets/01_launch.png` |
+| 已选择参考照片文件夹 | `guidebook_assets/02_reference_selected.png` |
+| 已选择活动照片文件夹 | `guidebook_assets/03_events_selected.png` |
+| 三个文件夹均已设置 | `guidebook_assets/04_all_folders_set.png` |
+| 整理进行中 | `guidebook_assets/05_sorting_in_progress.png` |
+| 整理完成 | `guidebook_assets/06_sorting_complete.png` |
+
+*（占位截图——界面已更新，提交前请使用 `quick_screenshots.py` 针对当前界面重新生成。）*
+
+---
+
+## 未来改进
+
+- 将 InsightFace `buffalo_l` 模型权重打包进 PyInstaller 构建，使首次运行也能完全离线（目前仍需联网一次以下载模型）
+- 在界面中引导教师为每位学生添加多张参考照片（代码已支持子文件夹方式）
+- 在文本日志之外，增加匹配结果的 CSV/Excel 导出
+- 为 `sorter.py` 的匹配逻辑补充自动化测试（目前依赖人工验证）
+
+---
+
+## 许可协议
+
+本仓库目前未包含许可证文件。如计划公开发布供他人复用，请在发布前添加 `LICENSE` 文件（例如 MIT 协议）；在此之前，默认版权保留所有权利。
