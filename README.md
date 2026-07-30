@@ -131,7 +131,20 @@ pip install -r requirements.txt
 ```bash
 python main.py
 ```
+## Download
 
+A packaged Windows executable is available from the **GitHub Releases** page.
+
+Steps:
+
+1. Go to the **Releases** page.
+2. Download the latest release.
+3. Extract the ZIP file (if applicable).
+4. Run **KinderSort.exe**.
+
+No Python installation is required when using the packaged application.
+
+> **Note:** The first launch may take several seconds because the AI models are initialized.
 
 
 > **First run needs internet, once.** InsightFace downloads the `buffalo_l` model (~300 MB) to `~/.insightface/models` the first time the app runs. After that download, sorting runs fully offline.
