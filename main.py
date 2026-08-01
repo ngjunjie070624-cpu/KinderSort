@@ -13,6 +13,7 @@ the GUI from appearing.
 """
 
 import logging
+import math
 import re
 import threading
 import time
@@ -54,19 +55,19 @@ class KinderSortApp(ctk.CTk):
     MIN_WIDTH = 860
     MIN_HEIGHT = 760
 
-    # --- Windows 11-inspired palette -----------------------------------
-    # (light, dark) tuples, following CustomTkinter's mode-pair convention.
-    # ACCENT approximates Windows 11's default system accent blue.
-    ACCENT = ("#0067C0", "#60CDFF")
-    ACCENT_HOVER = ("#005AA8", "#4CC2FF")
-    SUCCESS = ("#0F7B3D", "#3FDB7A")
-    SUCCESS_HOVER = ("#0C6631", "#2FBF71")
-    DANGER_TEXT = ("#8A1F11", "#FF99A4")
-    SURFACE = ("#F3F3F3", "#202020")          # Win11 "Mica"-like app background
-    CARD = ("#FFFFFF", "#2B2B2B")             # Win11 card/acrylic surface
-    CARD_BORDER = ("#E5E5E5", "#3A3A3A")
-    SUBTLE_TEXT = ("#5F5F5F", "#B0B0B0")
-    STAT_BG = ("#F5F8FC", "#242A33")
+    # --- iOS-inspired palette -----------------------------------------
+    # Soft, airy surfaces with a frosted-glass feel and polished motion.
+    ACCENT = ("#4F7CFF", "#76A7FF")
+    ACCENT_HOVER = ("#3E6BE6", "#5E87F4")
+    SUCCESS = ("#34C759", "#32D74B")
+    SUCCESS_HOVER = ("#2FAE4F", "#2CB74A")
+    DANGER_TEXT = ("#D64545", "#FF8A9A")
+    SURFACE = ("#F4F7FD", "#0B1220")
+    CARD = ("#FFFFFF", "#18253A")
+    CARD_BORDER = ("#E6ECF8", "#2D3E5B")
+    SUBTLE_TEXT = ("#5F6B7A", "#AAB6CE")
+    STAT_BG = ("#F7F9FD", "#202A3D")
+    GLASS = ("#FFFFFF", "#1A2538")
 
     # Consistent control sizing (requirement 5: rounded buttons, consistent sizing)
     BTN_HEIGHT = 38
@@ -84,6 +85,13 @@ class KinderSortApp(ctk.CTk):
         self.title("KinderSort AI — Face Recognition & Photo Sorting System")
         self.minsize(self.MIN_WIDTH, self.MIN_HEIGHT)
         self.geometry("980x820")
+
+        self._bg_canvas = tk.Canvas(self, highlightthickness=0, bd=0)
+        self._bg_canvas.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self._bg_particles: list[dict[str, float | str]] = []
+        self._bg_animation_id: str | None = None
+        self._build_background()
+        self._animate_background()
 
         # --- Original application state (unchanged) ---------------------
         self._reference_var = tk.StringVar()
@@ -187,9 +195,16 @@ class KinderSortApp(ctk.CTk):
         self.configure(fg_color=self.SURFACE)
 
         for child in list(self.winfo_children()):
-            child.destroy()
+            if child is not self._bg_canvas:
+                child.destroy()
 
-        splash = ctk.CTkFrame(self, fg_color="transparent")
+        splash = ctk.CTkFrame(
+            self,
+            fg_color=self.CARD,
+            corner_radius=24,
+            border_width=1,
+            border_color=self.CARD_BORDER,
+        )
         splash.pack(fill="both", expand=True, padx=32, pady=32)
 
         ctk.CTkLabel(
@@ -204,6 +219,67 @@ class KinderSortApp(ctk.CTk):
             font=ctk.CTkFont(family="Segoe UI", size=14),
         ).pack(anchor="center")
 
+    def _build_background(self) -> None:
+        """Paint a soft animated gradient wash behind the glassy UI surfaces."""
+        if not self.winfo_exists():
+            return
+        self._bg_canvas.delete("all")
+        width = max(self.winfo_width(), 1)
+        height = max(self.winfo_height(), 1)
+        self._bg_canvas.configure(bg=self.SURFACE[1] if ctk.get_appearance_mode().lower() == "dark" else self.SURFACE[0])
+
+        if not self._bg_particles:
+            base_color = "#5D8DFF" if ctk.get_appearance_mode().lower() == "dark" else "#7CA6FF"
+            self._bg_particles = [
+                {"x": width * 0.18, "y": height * 0.12, "r": width * 0.18, "dx": 1.1, "dy": 0.4, "color": base_color},
+                {"x": width * 0.76, "y": height * 0.22, "r": width * 0.16, "dx": -0.8, "dy": 0.6, "color": "#7AA2FF" if ctk.get_appearance_mode().lower() == "dark" else "#88B4FF"},
+                {"x": width * 0.58, "y": height * 0.74, "r": width * 0.22, "dx": 0.5, "dy": -0.7, "color": "#6C96FF" if ctk.get_appearance_mode().lower() == "dark" else "#9CC2FF"},
+            ]
+
+        for particle in self._bg_particles:
+            x = particle["x"]
+            y = particle["y"]
+            radius = particle["r"]
+            self._bg_canvas.create_oval(
+                x - radius,
+                y - radius,
+                x + radius,
+                y + radius,
+                fill=particle["color"],
+                outline="",
+            )
+
+    def _animate_background(self) -> None:
+        """Continuously shift the animated backdrop for a subtle living feel."""
+        if not self.winfo_exists():
+            return
+        width = max(self.winfo_width(), 1)
+        height = max(self.winfo_height(), 1)
+        self._bg_canvas.delete("all")
+        for particle in self._bg_particles:
+            particle["x"] += particle["dx"]
+            particle["y"] += particle["dy"]
+            if particle["x"] < -width * 0.2 or particle["x"] > width * 1.2:
+                particle["dx"] *= -1
+            if particle["y"] < -height * 0.2 or particle["y"] > height * 1.2:
+                particle["dy"] *= -1
+            radius = particle["r"] + 10 * math.sin((particle["x"] + particle["y"]) / 120.0)
+            self._bg_canvas.create_oval(
+                particle["x"] - radius,
+                particle["y"] - radius,
+                particle["x"] + radius,
+                particle["y"] + radius,
+                fill=particle["color"],
+                outline="",
+            )
+
+        self._bg_animation_id = self.after(24, self._animate_background)
+
+    def _refresh_background_theme(self) -> None:
+        """Rebuild the animated canvas when the theme changes."""
+        self._bg_particles = []
+        self._build_background()
+
     # ------------------------------------------------------------------
     # Windows 11-style layout (presentation only; no sorting logic here)
     # ------------------------------------------------------------------
@@ -214,7 +290,8 @@ class KinderSortApp(ctk.CTk):
         self.configure(fg_color=self.SURFACE)
 
         for child in list(self.winfo_children()):
-            child.destroy()
+            if child is not self._bg_canvas:
+                child.destroy()
 
         # A scrollable outer frame keeps the window usable if the user
         # shrinks it below the natural content height (requirement 11).
@@ -243,8 +320,18 @@ class KinderSortApp(ctk.CTk):
         header.grid(row=0, column=0, sticky="ew", pady=(0, 22))
         header.grid_columnconfigure(0, weight=1)
 
-        title_block = ctk.CTkFrame(header, fg_color="transparent")
-        title_block.grid(row=0, column=0, sticky="w")
+        hero = ctk.CTkFrame(
+            header,
+            fg_color=self.CARD,
+            corner_radius=24,
+            border_width=1,
+            border_color=self.CARD_BORDER,
+        )
+        hero.grid(row=0, column=0, sticky="ew")
+        hero.grid_columnconfigure(0, weight=1)
+
+        title_block = ctk.CTkFrame(hero, fg_color="transparent")
+        title_block.grid(row=0, column=0, sticky="w", padx=18, pady=(16, 6))
 
         ctk.CTkLabel(
             title_block,
@@ -258,8 +345,8 @@ class KinderSortApp(ctk.CTk):
             font=ctk.CTkFont(family="Segoe UI", size=14),
         ).pack(anchor="w", pady=(2, 0))
 
-        toggle_block = ctk.CTkFrame(header, fg_color="transparent")
-        toggle_block.grid(row=0, column=1, sticky="e")
+        toggle_block = ctk.CTkFrame(hero, fg_color="transparent")
+        toggle_block.grid(row=0, column=1, sticky="e", padx=18, pady=(16, 6))
         ctk.CTkLabel(
             toggle_block, text="Appearance", text_color=self.SUBTLE_TEXT,
             font=ctk.CTkFont(family="Segoe UI", size=11),
@@ -269,7 +356,7 @@ class KinderSortApp(ctk.CTk):
             values=["Light", "Dark"],
             variable=self._appearance_var,
             command=self._change_appearance,
-            corner_radius=self.BTN_CORNER,
+            corner_radius=999,
             selected_color=self.ACCENT,
             selected_hover_color=self.ACCENT_HOVER,
             width=160,
@@ -315,7 +402,7 @@ class KinderSortApp(ctk.CTk):
         """One self-contained Win11-style card: icon + title + description
         on top, path entry + rounded Browse button below."""
         card = ctk.CTkFrame(
-            parent, fg_color=self.CARD, corner_radius=self.CARD_CORNER,
+            parent, fg_color=self.CARD, corner_radius=24,
             border_width=1, border_color=self.CARD_BORDER,
         )
         card.grid(row=row, column=0, sticky="ew", pady=(0, 10))
@@ -414,7 +501,7 @@ class KinderSortApp(ctk.CTk):
         ).grid(row=0, column=1, sticky="e")
 
         self._progress_bar = ctk.CTkProgressBar(
-            card, variable=self._progress_var, height=10, corner_radius=8,
+            card, variable=self._progress_var, height=12, corner_radius=999,
             progress_color=self.ACCENT,
         )
         self._progress_bar.grid(row=1, column=0, sticky="ew", padx=18)
@@ -446,7 +533,7 @@ class KinderSortApp(ctk.CTk):
         """Dedicated status panel: current processing phase as a headline
         pill, plus the four running-total stat cards."""
         card = ctk.CTkFrame(
-            parent, fg_color=self.CARD, corner_radius=self.CARD_CORNER,
+            parent, fg_color=self.CARD, corner_radius=24,
             border_width=1, border_color=self.CARD_BORDER,
         )
         card.grid(row=4, column=0, sticky="ew", pady=(0, 14))
@@ -492,7 +579,7 @@ class KinderSortApp(ctk.CTk):
         1 Hz. All values come from PerformanceMonitor/psutil — no effect
         on face detection or recognition."""
         card = ctk.CTkFrame(
-            parent, fg_color=self.CARD, corner_radius=self.CARD_CORNER,
+            parent, fg_color=self.CARD, corner_radius=24,
             border_width=1, border_color=self.CARD_BORDER,
         )
         card.grid(row=5, column=0, sticky="ew", pady=(0, 14))
@@ -529,7 +616,7 @@ class KinderSortApp(ctk.CTk):
     def _build_summary_card(self, parent: ctk.CTkFrame) -> None:
         """Read-only completion summary in a styled container (unchanged content)."""
         card = ctk.CTkFrame(
-            parent, fg_color=self.CARD, corner_radius=self.CARD_CORNER,
+            parent, fg_color=self.CARD, corner_radius=24,
             border_width=1, border_color=self.CARD_BORDER,
         )
         card.grid(row=6, column=0, sticky="nsew")
@@ -540,7 +627,7 @@ class KinderSortApp(ctk.CTk):
         self._summary_text = ctk.CTkTextbox(
             card,
             height=140,
-            corner_radius=10,
+            corner_radius=16,
             border_width=0,
             fg_color=self.STAT_BG,
             font=ctk.CTkFont(family="Segoe UI", size=13),
@@ -556,6 +643,7 @@ class KinderSortApp(ctk.CTk):
     def _change_appearance(self, value: str) -> None:
         """Switch CustomTkinter appearance mode without affecting processing."""
         ctk.set_appearance_mode(value.lower())
+        self._refresh_background_theme()
 
     def _browse_folder(self, string_var: tk.StringVar) -> None:
         """Open the original directory chooser and store the selected path."""
