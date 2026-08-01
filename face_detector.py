@@ -21,7 +21,7 @@ class YOLOFaceDetector:
 
     def __init__(
         self,
-        model_path: str | Path = "yolov8n-face.pt",
+        model_path: str | Path | None = None,
         conf_threshold: float = 0.25,
     ) -> None:
         """Initialize the face detector.
@@ -30,7 +30,7 @@ class YOLOFaceDetector:
             model_path: Path or name of the YOLOv8 face model weights file.
             conf_threshold: Minimum confidence score threshold for detection.
         """
-        self.model_path = str(model_path)
+        self.model_path = str(model_path or Path(__file__).with_name("yolov8n.pt"))
         self.conf_threshold = conf_threshold
         # ROOT CAUSE (recall in group/reference photos with 3+ people):
         # 704px was already an upgrade from SCRFD's stock 640px, but group

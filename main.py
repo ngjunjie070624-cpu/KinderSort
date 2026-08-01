@@ -143,9 +143,11 @@ class KinderSortApp(ctk.CTk):
         self._perf_avg_time_var = tk.StringVar(value="— sec/image")
         self._perf_images_var = tk.StringVar(value="0")
 
-        self._build_ui()
-        # Startup optimization: paint the window first, then load AI models off
-        # the main thread so tkinter stays responsive during initialization.
+        # Startup optimization: show a lightweight splash window immediately,
+        # then build the full UI and preload AI models in the background.
+        self._build_splash_ui()
+        self.update_idletasks()
+        self.after(0, self._build_ui)
         self.after(0, self._start_ai_model_loading)
 
     def _start_ai_model_loading(self) -> None:
@@ -180,6 +182,28 @@ class KinderSortApp(ctk.CTk):
             f"Could not load AI models:\n\n{message}",
         )
 
+    def _build_splash_ui(self) -> None:
+        """Render a lightweight startup splash so the window appears immediately."""
+        self.configure(fg_color=self.SURFACE)
+
+        for child in list(self.winfo_children()):
+            child.destroy()
+
+        splash = ctk.CTkFrame(self, fg_color="transparent")
+        splash.pack(fill="both", expand=True, padx=32, pady=32)
+
+        ctk.CTkLabel(
+            splash,
+            text="KinderSort",
+            font=ctk.CTkFont(family="Segoe UI", size=28, weight="bold"),
+        ).pack(anchor="center", pady=(0, 8))
+        ctk.CTkLabel(
+            splash,
+            text="Starting up…",
+            text_color=self.SUBTLE_TEXT,
+            font=ctk.CTkFont(family="Segoe UI", size=14),
+        ).pack(anchor="center")
+
     # ------------------------------------------------------------------
     # Windows 11-style layout (presentation only; no sorting logic here)
     # ------------------------------------------------------------------
@@ -188,6 +212,9 @@ class KinderSortApp(ctk.CTk):
         """Build the responsive Win11-styled layout: title, 3 folder sections,
         actions, progress card, status panel, and run summary."""
         self.configure(fg_color=self.SURFACE)
+
+        for child in list(self.winfo_children()):
+            child.destroy()
 
         # A scrollable outer frame keeps the window usable if the user
         # shrinks it below the natural content height (requirement 11).

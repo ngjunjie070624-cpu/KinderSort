@@ -17,6 +17,10 @@ for pkg in ("customtkinter", "insightface", "onnxruntime", "ultralytics", "cv2")
     binaries += b
     hiddenimports += h
 
+# Bundle the local YOLO weights used by the app so the packaged exe does not
+# depend on a missing relative model file at runtime.
+datas.append(("yolov8n.pt", "."))
+
 # NOTE: InsightFace's buffalo_l model weights are downloaded to the user's
 # home directory (~/.insightface/models) on first run, not bundled into the
 # .exe. The teacher's machine therefore needs an internet connection the
