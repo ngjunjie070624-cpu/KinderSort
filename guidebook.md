@@ -57,13 +57,12 @@ Contains classroom or activity photos.
 
 Example:
 
-Classroom
-
-├── IMG001.jpg
-
-├── IMG002.jpg
-
-├── IMG003.jpg
+Classroom/
+    Sports_Day/
+        IMG_001.jpg
+        IMG_002.jpg
+    Field_Trip/
+        IMG_003.jpg
 
 ---
 
