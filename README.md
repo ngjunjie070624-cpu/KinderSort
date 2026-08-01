@@ -287,12 +287,12 @@ These choices keep memory footprint predictable and make the System Performance 
 
 | Step | Screenshot |
 |---|---|
-| App launch (models loading) | `guidebook_assets/01_launch.png` |
-| Reference folder selected | `guidebook_assets/02_reference_selected.png` |
-| Classroom folder selected | `guidebook_assets/03_events_selected.png` |
+| App launch (models loading) | `![Main Window](guidebook_assets/gui_main.png)` |
+| Reference folder selected | `![Reference Folder](guidebook_assets/select_reference.png)` |
+| Classroom folder selected | `![Classroom Folder](guidebook_assets/select_classroom.png)` |
 | All folders ready | `guidebook_assets/04_all_folders_set.png` |
-| Sorting in progress | `guidebook_assets/05_sorting_in_progress.png` |
-| Sorting complete | `guidebook_assets/06_sorting_complete.png` |
+| Sorting in progress | `![Processing](guidebook_assets/processing.png)` |
+| Sorting complete | `![Sorting Results](guidebook_assets/results.png)` |
 
 *(Placeholders — regenerate with `quick_screenshots.py` against the current GUI before submission, since the interface has changed since these were last captured.)*
 
