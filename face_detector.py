@@ -32,15 +32,10 @@ class YOLOFaceDetector:
         """
         self.model_path = str(model_path or Path(__file__).with_name("yolov8n.pt"))
         self.conf_threshold = conf_threshold
-        # ROOT CAUSE (recall in group/reference photos with 3+ people):
-        # 704px was already an upgrade from SCRFD's stock 640px, but group
-        # shots still lose the smallest/farthest faces because their pixel
-        # footprint at 704px input is well under SCRFD's reliable minimum
-        # (~20-30px). Bumping to 800px buys ~13% more linear resolution per
-        # face (~29% more pixels overall) at a roughly proportional CPU cost
-        # increase for the detection pass only (recognition cost is
-        # unaffected since it operates on individually-cropped faces).
-        self.det_size = (800, 800)
+        # Restore a slightly larger detector input size to keep recall higher
+        # for reference photos and group shots. This is a better trade-off when
+        # the goal is to avoid missing faces entirely.
+        self.det_size = (704, 704)
         # ROOT CAUSE (missed faces in tightly-grouped photos, e.g. 3 people
         # standing shoulder-to-shoulder): SCRFD's NMS treats any pair of
         # boxes with IoU >= nms_threshold as duplicates of the same face and

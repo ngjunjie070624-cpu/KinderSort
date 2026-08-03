@@ -59,34 +59,22 @@ class PhotoSorter:
         summary = sorter.sort_all(progress_cb, cancelled_cb)
     """
 
-    DISTANCE_THRESHOLD = 0.55
+    DISTANCE_THRESHOLD = 0.60
     """Maximum ArcFace cosine distance to accept a student match.
 
-    NOT changed in this pass. buffalo_l cosine distances for a genuine match
-    typically fall well under 0.4 in good lighting; 0.55 already has real
-    slack built in. Loosening this further to chase down "false Unmatched"
-    reports risks the opposite failure (wrong student matched) and doesn't
-    address the actual cause we found: bad reference embeddings from picking
-    the wrong face in a multi-person reference photo (see load_references),
-    and faces silently dropped during embedding extraction (see
-    face_recognizer.extract_embeddings_for_boxes). Fix the input quality
-    first; only loosen this threshold afterwards if false-unmatched reports
-    persist with clean references.
+    Slightly relaxed to reduce false unmatched results when lighting, pose,
+    or expression differ from the reference image. This is a moderate
+    adjustment to improve recall without making matching overly permissive.
     """
 
-    AMBIGUITY_MARGIN = 0.02
+    AMBIGUITY_MARGIN = 0.01
     """Minimum gap between the best and second-best student distances.
 
-    NOT changed in this pass — with only one reference photo per student
-    (the common case here), distances are noisier than with several
-    references averaged/best-cased together, and a larger margin would
-    reject more real matches as "too close to call". This is a case for
-    encouraging multiple reference photos per student (already supported by
-    dropping several images into a `StudentName/` subfolder) rather than
-    tuning the margin down.
+    Reduced slightly so a candidate with a marginally better distance is not
+    rejected solely because the runner-up is close.
     """
 
-    MAX_IMAGE_DIMENSION = 1000
+    MAX_IMAGE_DIMENSION = 800
     """Longest side in pixels after resizing for face detection (performance)."""
 
     def __init__(
