@@ -17,9 +17,12 @@ for pkg in ("customtkinter", "insightface", "onnxruntime", "ultralytics", "cv2")
     binaries += b
     hiddenimports += h
 
-# Bundle the local YOLO weights used by the app so the packaged exe does not
-# depend on a missing relative model file at runtime.
 datas.append(("yolov8n.pt", "."))
+
+# Bundle the app icon file so python code can load it at runtime
+import os
+if os.path.exists("app_icon.ico"):
+    datas.append(("app_icon.ico", "."))
 
 # NOTE: InsightFace's buffalo_l model weights are downloaded to the user's
 # home directory (~/.insightface/models) on first run, not bundled into the
@@ -48,14 +51,13 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='KinderSort',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
@@ -64,4 +66,17 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='app_icon.ico' if os.path.exists('app_icon.ico') else None,
 )
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name='KinderSort',
+)
+

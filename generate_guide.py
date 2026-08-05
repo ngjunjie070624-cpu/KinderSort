@@ -281,7 +281,7 @@ You can create a new empty folder anywhere on your computer.
 
 ### Step 1 — Open KinderSort
 
-Double-click the **KinderSort.exe** file to launch the app.
+Double-click the **KinderSort** desktop shortcut (or `KinderSort.exe` inside the installation folder) to launch the app.
 
 ![KinderSort on launch](guidebook_assets/01_launch.png)
 

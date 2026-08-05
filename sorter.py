@@ -59,7 +59,7 @@ class PhotoSorter:
         summary = sorter.sort_all(progress_cb, cancelled_cb)
     """
 
-    DISTANCE_THRESHOLD = 0.60
+    DISTANCE_THRESHOLD = 0.65
     """Maximum ArcFace cosine distance to accept a student match.
 
     Slightly relaxed to reduce false unmatched results when lighting, pose,
@@ -67,14 +67,14 @@ class PhotoSorter:
     adjustment to improve recall without making matching overly permissive.
     """
 
-    AMBIGUITY_MARGIN = 0.01
+    AMBIGUITY_MARGIN = 0.005
     """Minimum gap between the best and second-best student distances.
 
     Reduced slightly so a candidate with a marginally better distance is not
     rejected solely because the runner-up is close.
     """
 
-    MAX_IMAGE_DIMENSION = 800
+    MAX_IMAGE_DIMENSION = 1280
     """Longest side in pixels after resizing for face detection (performance)."""
 
     def __init__(

@@ -129,16 +129,16 @@ pip install -r requirements.txt
 ```bash
 python main.py
 ```
-## 下载（Windows 可执行文件）
+## 下载
 
-如果您不想自行安装 Python 环境，可以直接下载已经打包好的 Windows 可执行文件。
+在 **GitHub Releases** 页面提供了已打包好的 Windows 安装包程序。
 
 步骤：
 
-1. 前往本项目的**[**Releases**](https://github.com/ngjunjie070624-cpu/KinderSort/releases/tag/v1.0.0)** 页面。
-2. 下载最新版本。
-3. （如果下载的是 ZIP）先解压缩。
-4. 双击 **KinderSort.exe** 即可运行。
+1. 前往本项目的 **[Releases](https://github.com/ngjunjie070624-cpu/KinderSort/releases/tag/v1.0.0)** 页面。
+2. 下载 `KinderSort_Setup.exe` 安装包。
+3. 运行安装程序完成安装。
+4. 通过桌面快捷方式或开始菜单启动 **KinderSort**。
 
 使用已打包的版本时，无需安装 Python 或任何额外依赖。
 
@@ -179,18 +179,23 @@ python main.py
 
 **打包后使用（教师）：**
 
-1. 从 [Releases](https://github.com/ngjunjie070624-cpu/KinderSort/releases/tag/v1.0.0) 页面下载 `KinderSort.exe`。
-2. 双击运行 `KinderSort.exe`。
-3. 按上述步骤选择文件夹并开始整理。
+1. 从 [Releases](https://github.com/ngjunjie070624-cpu/KinderSort/releases/tag/v1.0.0) 页面下载 `KinderSort_Setup.exe`。
+2. 双击运行 `KinderSort_Setup.exe` 运行安装程序进行安装。
+3. 安装完成后，双击桌面快捷方式启动应用，并按上述步骤选择文件夹并开始整理。
 
 完整图文手册：[`guidebook.md`](https://github.com/ngjunjie070624-cpu/KinderSort/blob/main/guidebook.md)
 
 **自行打包 `.exe`：**
 
+编译生成目录程序并制作安装包：
+
 ```bash
-pip install pyinstaller
-pyinstaller KinderSort.spec
-# 输出：dist/KinderSort.exe
+# 1. 编译生成目录结构程序
+pyinstaller KinderSort.spec --clean --noconfirm
+
+# 2. 编译生成安装包（需要本地安装有 Inno Setup 6）
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss
+# 输出：Output/KinderSort_Setup.exe
 ```
 
 ---
@@ -209,14 +214,17 @@ KinderSort/
 ├── utils.py              ← 文件处理、命名、日志设置
 ├── requirements.txt      ← Python 依赖
 ├── KinderSort.spec       ← PyInstaller 打包配置
+├── setup.iss             ← Inno Setup 安装包脚本
 ├── guidebook.md          ← 面向教师的使用手册
 ├── README.md             ← 英文说明
 ├── README.zh-CN.md       ← 本文件
 ├── quick_screenshots.py  ← 开发者工具：截取界面截图
 ├── generate_guide.py     ← 开发者工具：重新生成手册素材
 ├── docx_export.py        ← 开发者工具：导出 Word 版手册
-└── dist/
-    └── KinderSort.exe    ← 打包输出（打包后生成）
+├── dist/
+│   └── KinderSort/       ← 打包生成的程序文件夹
+└── Output/
+    └── KinderSort_Setup.exe ← 编译生成的安装包程序
 ```
 
 **运行时（教师选择的文件夹，不在代码仓库中）：**
@@ -283,12 +291,13 @@ KinderSort 面向普通教室笔记本电脑设计，无需独立显卡：
 
 | 步骤 | 截图 |
 |---|---|
-| 应用启动（模型加载中） | `guidebook_assets/01_launch.png` |
-| 已选择参考照片文件夹 | `guidebook_assets/02_reference_selected.png` |
-| 已选择活动照片文件夹 | `guidebook_assets/03_events_selected.png` |
-| 三个文件夹均已设置 | `guidebook_assets/04_all_folders_set.png` |
-| 整理进行中 | `guidebook_assets/05_sorting_in_progress.png` |
-| 整理完成 | `guidebook_assets/06_sorting_complete.png` |
+| 应用启动（模型加载中） |
+| App launch (models loading) | ![Main Window](guidebook_assets/gui_main.png) |
+| 已选择参考照片文件夹 |![Reference Folder](guidebook_assets/select_reference.png)|
+| 已选择活动照片文件夹 | ![Classroom Folder](guidebook_assets/select_classroom.png)|
+| 三个文件夹均已设置 |![Output Folder](guidebook_assets/select_output.png) |
+| 整理进行中 | ![Processing](guidebook_assets/processing.png)|
+| 整理完成 | ![Sorting Results](guidebook_assets/results.png) |
 
 *（占位截图——界面已更新，提交前请使用 `quick_screenshots.py` 针对当前界面重新生成。）*
 

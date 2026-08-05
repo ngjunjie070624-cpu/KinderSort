@@ -23,7 +23,7 @@ Before running the application, please ensure your computer meets the following 
 
 # 3. Starting the Application
 
-1. Double-click **KinderSort.exe**.
+1. Double-click the **KinderSort** shortcut on your Desktop (or double-click `KinderSort.exe` inside the installation folder).
 2. Wait for the application to finish loading.
 3. The main window will appear.
 
@@ -234,7 +234,7 @@ They are automatically placed inside the **Unmatched** folder.
 
 Yes.
 
-The packaged executable (KinderSort.exe) allows users to run the application without installing Python.
+The packaged installer (`KinderSort_Setup.exe`) installs the application so users can run it without installing Python.
 
 ---
 

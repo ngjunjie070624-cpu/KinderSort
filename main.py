@@ -75,7 +75,6 @@ class KinderSortApp(ctk.CTk):
     CARD_CORNER = 14
     BROWSE_BTN_WIDTH = 96
     ACTION_BTN_WIDTH = 150
-
     def __init__(self) -> None:
         """Configure the themed window and preserve the original application state."""
         super().__init__()
@@ -85,6 +84,18 @@ class KinderSortApp(ctk.CTk):
         self.title("KinderSort AI — Face Recognition & Photo Sorting System")
         self.minsize(self.MIN_WIDTH, self.MIN_HEIGHT)
         self.geometry("980x820")
+
+        # Set window icon if available
+        import sys
+        if getattr(sys, 'frozen', False):
+            icon_path = Path(sys._MEIPASS) / "app_icon.ico"
+        else:
+            icon_path = Path(__file__).parent / "app_icon.ico"
+        if icon_path.exists():
+            try:
+                self.iconbitmap(icon_path)
+            except Exception:
+                pass
 
         self._bg_canvas = tk.Canvas(self, highlightthickness=0, bd=0)
         self._bg_canvas.place(relx=0, rely=0, relwidth=1, relheight=1)

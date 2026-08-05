@@ -133,14 +133,14 @@ python main.py
 ```
 ## Download
 
-A packaged Windows executable is available from the **GitHub Releases** page.
+A packaged Windows installer is available from the **GitHub Releases** page.
 
 Steps:
 
 1. Go to the  **[**Releases**](https://github.com/ngjunjie070624-cpu/KinderSort/releases/tag/v1.0.0)** page.
-2. Download the latest release.
-3. Extract the ZIP file (if applicable).
-4. Run **KinderSort.exe**.
+2. Download the `KinderSort_Setup.exe` installer.
+3. Run the installer to install the application.
+4. Launch **KinderSort** from the Desktop shortcut or Start Menu.
 
 No Python installation is required when using the packaged application.
 
@@ -183,18 +183,22 @@ python main.py
 
 **Packaged app (teachers):**
 
-1. Download `KinderSort.exe` from the [Releases]((https://github.com/ngjunjie070624-cpu/KinderSort/releases/tag/v1.0.0)) page.
-2. Double-click `KinderSort.exe`.
-3. Follow the same folder-selection steps above.
+1. Download `KinderSort_Setup.exe` from the [Releases](https://github.com/ngjunjie070624-cpu/KinderSort/releases/tag/v1.0.0) page.
+2. Double-click `KinderSort_Setup.exe` to run the installer and complete the setup.
+3. Launch the app from the Desktop or Start Menu shortcut and follow the same folder-selection steps above.
 
 Full illustrated guide: [`guidebook.md`](https://github.com/ngjunjie070624-cpu/KinderSort/blob/main/guidebook.md)
 
 **Build the `.exe` yourself:**
 
+To compile the directory distribution and build the setup installer:
 ```bash
-pip install pyinstaller
-pyinstaller KinderSort.spec
-# Output: dist/KinderSort.exe
+# 1. Build the directory distribution
+pyinstaller KinderSort.spec --clean --noconfirm
+
+# 2. Compile the installer using Inno Setup (requires Inno Setup 6 installed)
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss
+# Output: Output/KinderSort_Setup.exe
 ```
 
 ---
@@ -213,14 +217,17 @@ KinderSort/
 ├── utils.py              ← File helpers, naming, logging setup
 ├── requirements.txt      ← Python dependencies
 ├── KinderSort.spec       ← PyInstaller build configuration
+├── setup.iss             ← Inno Setup installer script
 ├── guidebook.md          ← Teacher-facing illustrated guide
 ├── README.md             ← This file
 ├── README.zh-CN.md       ← 简体中文说明
 ├── quick_screenshots.py  ← Developer utility to capture GUI screenshots
 ├── generate_guide.py     ← Developer utility to regenerate guidebook assets
 ├── docx_export.py        ← Developer utility for Word export of the guide
-└── dist/
-    └── KinderSort.exe    ← Packaged output (after building)
+├── dist/
+│   └── KinderSort/       ← Packaged directory output
+└── Output/
+    └── KinderSort_Setup.exe ← Compiled setup installer
 ```
 
 **At runtime (teacher-selected folders, not part of the repo):**
